@@ -9,6 +9,10 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+  actions: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -42,13 +46,22 @@ jobs:
           KEY_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
           KEYSTORE_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
           
-          echo "🔐 生成新密码..."
-          
-          # 使用 GitHub CLI 设置 Secrets
-          echo "$KEY_PASSWORD" | gh secret set KEY_PASSWORD
-          echo "$KEYSTORE_PASSWORD" | gh secret set KEYSTORE_PASSWORD
-          
-          echo "✅ 密码已自动保存到 GitHub Secrets"
+          echo "🔐 首次运行 - 生成新密码"
+          echo ""
+          echo "⚠️  重要: 请保存以下密码并手动添加到 GitHub Secrets!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "KEY_PASSWORD=$KEY_PASSWORD"
+          echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "📝 添加步骤:"
+          echo "1. 进入仓库 Settings -> Secrets and variables -> Actions"
+          echo "2. 点击 New repository secret"
+          echo "3. 添加 KEY_PASSWORD (值见上方)"
+          echo "4. 添加 KEYSTORE_PASSWORD (值见上方)"
+          echo ""
+          echo "💡 提示: 密码信息也会保存在 Artifacts 中供下载"
+          echo ""
         else
           KEY_PASSWORD="${{ secrets.KEY_PASSWORD }}"
           KEYSTORE_PASSWORD="${{ secrets.KEYSTORE_PASSWORD }}"
@@ -78,7 +91,7 @@ jobs:
         echo "AppProxy Release Keystore Information" >> output/KEYSTORE_INFO.txt
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> output/KEYSTORE_INFO.txt
         echo "" >> output/KEYSTORE_INFO.txt
-        echo "✅ 密码已自动保存到 GitHub Secrets" >> output/KEYSTORE_INFO.txt
+        echo "⚠️  请妥善保管此文件和 keystore 文件！" >> output/KEYSTORE_INFO.txt
         echo "" >> output/KEYSTORE_INFO.txt
         echo "Keystore File: release.jks" >> output/KEYSTORE_INFO.txt
         echo "KEY_ALIAS: release" >> output/KEYSTORE_INFO.txt
@@ -86,17 +99,22 @@ jobs:
         echo "KEYSTORE_PASSWORD: $KEYSTORE_PASSWORD" >> output/KEYSTORE_INFO.txt
         echo "" >> output/KEYSTORE_INFO.txt
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> output/KEYSTORE_INFO.txt
-        echo "注意事项:" >> output/KEYSTORE_INFO.txt
+        echo "如何添加到 GitHub Secrets:" >> output/KEYSTORE_INFO.txt
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> output/KEYSTORE_INFO.txt
         echo "" >> output/KEYSTORE_INFO.txt
-        echo "1. ✅ 密码已自动保存到仓库的 Secrets" >> output/KEYSTORE_INFO.txt
-        echo "2. 💾 请下载 release.jks 文件并妥善保管" >> output/KEYSTORE_INFO.txt
-        echo "3. 📝 此信息文件仅作备份参考" >> output/KEYSTORE_INFO.txt
+        echo "1. 进入仓库的 Settings" >> output/KEYSTORE_INFO.txt
+        echo "2. 点击 Secrets and variables -> Actions" >> output/KEYSTORE_INFO.txt
+        echo "3. 点击 New repository secret" >> output/KEYSTORE_INFO.txt
+        echo "4. 添加以下 secrets:" >> output/KEYSTORE_INFO.txt
+        echo "   - Name: KEY_PASSWORD" >> output/KEYSTORE_INFO.txt
+        echo "     Value: $KEY_PASSWORD" >> output/KEYSTORE_INFO.txt
         echo "" >> output/KEYSTORE_INFO.txt
-        echo "如需查看 Secrets:" >> output/KEYSTORE_INFO.txt
-        echo "Settings -> Secrets and variables -> Actions" >> output/KEYSTORE_INFO.txt
+        echo "   - Name: KEYSTORE_PASSWORD" >> output/KEYSTORE_INFO.txt
+        echo "     Value: $KEYSTORE_PASSWORD" >> output/KEYSTORE_INFO.txt
         echo "" >> output/KEYSTORE_INFO.txt
-        echo "后续构建会自动使用已保存的密码。" >> output/KEYSTORE_INFO.txt
+        echo "5. 将 release.jks 文件保存到安全位置" >> output/KEYSTORE_INFO.txt
+        echo "" >> output/KEYSTORE_INFO.txt
+        echo "后续构建时，workflow 会从 Secrets 读取这些密码。" >> output/KEYSTORE_INFO.txt
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> output/KEYSTORE_INFO.txt
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
