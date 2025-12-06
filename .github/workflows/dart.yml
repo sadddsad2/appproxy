@@ -65,11 +65,11 @@ jobs:
         
         # 创建 key.properties 文件
         cat > android/key.properties <<EOF
-        storePassword=$KEYSTORE_PASSWORD
-        keyPassword=$KEY_PASSWORD
-        keyAlias=release
-        storeFile=keystore/release.jks
-        EOF
+storePassword=$KEYSTORE_PASSWORD
+keyPassword=$KEY_PASSWORD
+keyAlias=release
+storeFile=keystore/release.jks
+EOF
         
         echo "✅ Keystore generated successfully"
         echo "KEY_PASSWORD=$KEY_PASSWORD" >> $GITHUB_ENV
