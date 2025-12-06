@@ -80,23 +80,31 @@ jobs:
         
         # 检查是否已经有我们的配置
         if ! grep -q "def keystorePropertiesFile = rootProject.file" android/app/build.gradle; then
-          # 在文件开头添加 keystore 配置
-          echo "" > /tmp/signing_config.gradle
-          echo "def keystorePropertiesFile = rootProject.file(\"key.properties\")" >> /tmp/signing_config.gradle
-          echo "def keystoreProperties = new Properties()" >> /tmp/signing_config.gradle
-          echo "if (keystorePropertiesFile.exists()) {" >> /tmp/signing_config.gradle
-          echo "    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))" >> /tmp/signing_config.gradle
-          echo "}" >> /tmp/signing_config.gradle
-          echo "" >> /tmp/signing_config.gradle
-          
-          # 将新配置和原文件合并
-          cat /tmp/signing_config.gradle android/app/build.gradle.bak > android/app/build.gradle
+          # 创建 keystore 配置（插入到 plugins 块之后）
+          awk '
+          /^plugins \{/,/^\}/ {
+            print
+            if (/^\}/ && !done) {
+              print ""
+              print "def keystorePropertiesFile = rootProject.file(\"key.properties\")"
+              print "def keystoreProperties = new Properties()"
+              print "if (keystorePropertiesFile.exists()) {"
+              print "    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))"
+              print "}"
+              print ""
+              done=1
+            }
+            next
+          }
+          { print }
+          ' android/app/build.gradle.bak > android/app/build.gradle
         fi
         
         # 添加 signingConfigs（如果不存在）
         if ! grep -q "signingConfigs {" android/app/build.gradle; then
           # 在 android { 后面添加 signingConfigs
-          awk '/android \{/ {
+          awk '
+          /^[[:space:]]*android \{/ {
             print $0
             print "    signingConfigs {"
             print "        release {"
@@ -108,27 +116,32 @@ jobs:
             print "            }"
             print "        }"
             print "    }"
+            print ""
             next
           }
-          { print }' android/app/build.gradle > /tmp/build.gradle.new
+          { print }
+          ' android/app/build.gradle > /tmp/build.gradle.new
           mv /tmp/build.gradle.new android/app/build.gradle
         fi
         
         # 确保 release buildType 使用签名配置
         if ! grep -q "signingConfig signingConfigs.release" android/app/build.gradle; then
-          awk '/buildTypes \{/,/release \{/ {
-            if (/release \{/) {
+          awk '
+          /^[[:space:]]*buildTypes \{/,/^[[:space:]]*release \{/ {
+            if (/^[[:space:]]*release \{/ && !done) {
               print $0
               print "            signingConfig signingConfigs.release"
+              done=1
               next
             }
           }
-          { print }' android/app/build.gradle > /tmp/build.gradle.new
+          { print }
+          ' android/app/build.gradle > /tmp/build.gradle.new
           mv /tmp/build.gradle.new android/app/build.gradle
         fi
         
-        echo "📝 Updated build.gradle:"
-        cat android/app/build.gradle
+        echo "📝 Updated build.gradle (first 50 lines):"
+        head -50 android/app/build.gradle
         
     - name: Verify signing configuration
       run: |
