@@ -15,31 +15,30 @@ class AddProxyWidget extends StatefulWidget {
   State<AddProxyWidget> createState() => _AddProxyWidgetState();
 }
 
-// 定义全局函数用于校验Map中所有字符串类型的值
-bool isNullOrEmpty(Map<String, String> map) {
+// 定义全局函数用于校验Map中必填字段
+bool isNullOrEmpty(Map<String, String> map, List<String> requiredKeys) {
   if (map.isEmpty) {
     return true;
   }
-  for (var key in map.keys) {
-    if (key == "proxyUser" || key == "proxyPass") {
-      continue;
-    }
-    if (map[key] == null || map[key]!.isEmpty) {
+  for (var key in requiredKeys) {
+    if (!map.containsKey(key) || map[key] == null || map[key]!.isEmpty) {
       return true;
     }
   }
-
   return false;
 }
 
 class _AddProxyWidgetState extends State<AddProxyWidget> {
   var proxyConfig = <String, String>{};
+  
+  // 新的配置字段控制器
   final TextEditingController _controller_proxyName = TextEditingController();
-  final TextEditingController _controller_proxyType = TextEditingController();
-  final TextEditingController _controller_proxyHost = TextEditingController();
-  final TextEditingController _controller_proxyPort = TextEditingController();
-  final TextEditingController _controller_proxyUser = TextEditingController();
-  final TextEditingController _controller_proxyPass = TextEditingController();
+  final TextEditingController _controller_serverAddr = TextEditingController();
+  final TextEditingController _controller_listenAddr = TextEditingController();
+  final TextEditingController _controller_preferredIP = TextEditingController();
+  final TextEditingController _controller_token = TextEditingController();
+  final TextEditingController _controller_dnsServer = TextEditingController();
+  final TextEditingController _controller_echDomain = TextEditingController();
 
   final Debounce _debounce = Debounce(const Duration(seconds: 1));
 
@@ -48,12 +47,19 @@ class _AddProxyWidgetState extends State<AddProxyWidget> {
     super.initState();
 
     if (widget.onData.isNotEmpty) {
-      _controller_proxyName.text = widget.onData['proxyName'];
-      _controller_proxyType.text = widget.onData['proxyType'];
-      _controller_proxyHost.text = widget.onData['proxyHost'];
-      _controller_proxyPort.text = widget.onData['proxyPort'];
-      _controller_proxyUser.text = widget.onData['proxyUser'];
-      _controller_proxyPass.text = widget.onData['proxyPass'];
+      // 编辑模式 - 加载现有配置
+      _controller_proxyName.text = widget.onData['proxyName'] ?? '';
+      _controller_serverAddr.text = widget.onData['serverAddr'] ?? '';
+      _controller_listenAddr.text = widget.onData['listenAddr'] ?? '127.0.0.1:1080';
+      _controller_preferredIP.text = widget.onData['preferredIP'] ?? '';
+      _controller_token.text = widget.onData['token'] ?? '';
+      _controller_dnsServer.text = widget.onData['dnsServer'] ?? 'https://1.1.1.1/dns-query';
+      _controller_echDomain.text = widget.onData['echDomain'] ?? 'cloudflare-ech.com';
+    } else {
+      // 新建模式 - 设置默认值
+      _controller_listenAddr.text = '127.0.0.1:1080';
+      _controller_dnsServer.text = 'https://1.1.1.1/dns-query';
+      _controller_echDomain.text = 'cloudflare-ech.com';
     }
   }
 
@@ -61,34 +67,61 @@ class _AddProxyWidgetState extends State<AddProxyWidget> {
   void dispose() {
     super.dispose();
     _debounce.dispose();
+    _controller_proxyName.dispose();
+    _controller_serverAddr.dispose();
+    _controller_listenAddr.dispose();
+    _controller_preferredIP.dispose();
+    _controller_token.dispose();
+    _controller_dnsServer.dispose();
+    _controller_echDomain.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
         appBar: AppBar(
-          title: Text(S.of(context).text_add_proxy),
-          // backgroundColor: const Color.fromRGBO(142, 0, 244, 1.0),
+          title: Text(widget.onData.isEmpty ? '添加配置' : '编辑配置'),
           backgroundColor: Theme.of(context).primaryColor,
           actions: [
             IconButton(
               padding: const EdgeInsets.only(right: 20.0),
               icon: const Icon(Icons.save),
               onPressed: () {
-                proxyConfig['proxyName'] = _controller_proxyName.text;
-                proxyConfig['proxyType'] = _controller_proxyType.text;
-                proxyConfig['proxyHost'] = _controller_proxyHost.text;
-                proxyConfig['proxyPort'] = _controller_proxyPort.text;
-                if (isNullOrEmpty(proxyConfig)) {
-                  debugPrint("proxyConfig:$proxyConfig");
+                // 收集配置数据
+                proxyConfig['proxyName'] = _controller_proxyName.text.trim();
+                proxyConfig['proxyType'] = 'echproxy'; // 固定类型
+                proxyConfig['serverAddr'] = _controller_serverAddr.text.trim();
+                proxyConfig['listenAddr'] = _controller_listenAddr.text.trim();
+                proxyConfig['preferredIP'] = _controller_preferredIP.text.trim();
+                proxyConfig['token'] = _controller_token.text.trim();
+                proxyConfig['dnsServer'] = _controller_dnsServer.text.trim();
+                proxyConfig['echDomain'] = _controller_echDomain.text.trim();
+
+                // 校验必填项（只需要配置名称和Workers地址）
+                if (isNullOrEmpty(proxyConfig, ['proxyName', 'serverAddr', 'listenAddr'])) {
+                  debugPrint("proxyConfig: $proxyConfig");
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text(S.of(context).text_check_parameters),
+                      content: const Text('请填写配置名称、Workers地址和监听地址'),
                       backgroundColor: Colors.purple.withOpacity(0.4)));
                   return;
                 }
-                // 这俩可以为空
-                proxyConfig['proxyUser'] = _controller_proxyUser.text;
-                proxyConfig['proxyPass'] = _controller_proxyPass.text;
+
+                // 验证 serverAddr 格式 (应包含端口)
+                if (!proxyConfig['serverAddr']!.contains(':')) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: const Text('Workers地址格式错误，应为 domain:port'),
+                      backgroundColor: Colors.purple.withOpacity(0.4)));
+                  return;
+                }
+
+                // 验证 listenAddr 格式
+                if (!proxyConfig['listenAddr']!.contains(':')) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: const Text('监听地址格式错误，应为 IP:端口'),
+                      backgroundColor: Colors.purple.withOpacity(0.4)));
+                  return;
+                }
+
                 if (widget.onData.isNotEmpty) {
                   widget.onDataFetched(proxyConfig, isAdd: true);
                 } else {
@@ -101,172 +134,639 @@ class _AddProxyWidgetState extends State<AddProxyWidget> {
         ),
         body: Container(
             color: Theme.of(context).canvasColor,
-            // 获取当前设备的屏幕高度,解决Column没有充满屏幕出现白色问题
             height: MediaQuery.of(context).size.height,
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20.0),
               child: Column(
-                // 设置UI布局中子元素的主轴线对齐方式
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  // ========== 配置名称 ==========
                   TextField(
                       readOnly: widget.onData.isNotEmpty,
                       controller: _controller_proxyName,
-                      decoration: InputDecoration(
-                        labelText: S.of(context).text_config_name,
-                        border: const OutlineInputBorder(),
+                      decoration: const InputDecoration(
+                        labelText: '配置名称 *',
+                        hintText: '例如：我的Workers',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.label),
                       ),
                       onTap: () {
                         if (widget.onData.isNotEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content: Text(S.of(context).text_config_cannot_be_modified),
+                              content: const Text('配置名称不可修改'),
                               backgroundColor: Colors.purple.withOpacity(0.4)));
                         }
                       }),
                   const SizedBox(height: 20.0),
-                  ProxyType(
-                    controller: _controller_proxyType,
+
+                  // ========== Workers 地址 ==========
+                  TextField(
+                    controller: _controller_serverAddr,
+                    decoration: const InputDecoration(
+                      labelText: 'Workers 地址 *',
+                      hintText: 'worker.example.workers.dev:443',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.cloud),
+                      helperText: '格式：域名:端口',
+                    ),
+                    keyboardType: TextInputType.url,
                   ),
                   const SizedBox(height: 20.0),
+
+                  // ========== 监听地址 ==========
                   TextField(
-                    controller: _controller_proxyHost,
-                    decoration: InputDecoration(
-                      labelText: S.of(context).text_proxy_addr,
-                      border: const OutlineInputBorder(),
+                    controller: _controller_listenAddr,
+                    decoration: const InputDecoration(
+                      labelText: '监听地址',
+                      hintText: '127.0.0.1:1080',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.settings_ethernet),
+                      helperText: '本地 SOCKS5 监听地址和端口',
                     ),
+                    keyboardType: TextInputType.text,
+                  ),
+                  const SizedBox(height: 20.0),
+
+                  // ========== 优选 IP (可选) ==========
+                  TextField(
+                    controller: _controller_preferredIP,
+                    decoration: const InputDecoration(
+                      labelText: '优选 IP (可选)',
+                      hintText: '例如：162.159.128.1',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.star),
+                      helperText: '优选的 Workers IP 地址，用于提高连接速度',
+                    ),
+                    keyboardType: TextInputType.number,
                     onChanged: (value) {
-                      // 校验只能输入ip地址
-                      // if (value.isNotEmpty &&
-                      //     !RegExp(r'^[0-9.]+$').hasMatch(value)) {
-                      //   _controller_proxyHost.text =
-                      //       value.substring(0, value.length - 1);
-                      // }
-                      _debounce.call(context, checkConnect);
-                    },
-                  ),
+                      // 校验只能输入IP地址
+                      if (value.isNotEmpty && !RegExp(r'^[0-9.:]+
                   const SizedBox(height: 20.0),
+
+                  // ========== 固定 IP (可选) ==========
                   TextField(
-                    controller: _controller_proxyPort,
-                    decoration: InputDecoration(
-                      labelText: S.of(context).text_proxy_port,
-                      border: const OutlineInputBorder(),
+                    controller: _controller_serverIP,
+                    decoration: const InputDecoration(
+                      labelText: '固定 IP (可选)',
+                      hintText: '不填则自动解析',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.dns),
+                      helperText: '用于指定 Workers 的固定 IP 地址',
                     ),
+                    keyboardType: TextInputType.number,
                     onChanged: (value) {
-                      // 校验只能输入数字
-                      if (value.isNotEmpty && !RegExp(r'^[0-9]+$').hasMatch(value)) {
-                        _controller_proxyPort.text = value.substring(0, value.length - 1);
-                      }
-                      _debounce.call(context, checkConnect);
-                    },
-                  ),
+                      // 校验IP地址格式
+                      if (value.isNotEmpty && 
+                          !RegExp(r'^[0-9.:]+
                   const SizedBox(height: 20.0),
+
+                  // ========== 认证 Token (可选) ==========
                   TextField(
-                    controller: _controller_proxyUser,
-                    decoration: InputDecoration(
-                      labelText: S.of(context).text_proxy_username,
-                      border: const OutlineInputBorder(),
+                    controller: _controller_token,
+                    decoration: const InputDecoration(
+                      labelText: '认证 Token (可选)',
+                      hintText: '不填则无需认证',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.vpn_key),
                     ),
                   ),
                   const SizedBox(height: 20.0),
+
+                  // ========== DNS 服务器 ==========
                   TextField(
-                    // 设置密码输入框的配置
-                    // 控制器，用于管理输入框的文本状态
-                    controller: _controller_proxyPass,
-                    // 是否隐藏密码字符
-                    obscureText: true,
-                    // 用于隐藏密码的字符，默认为"*"
-                    obscuringCharacter: "*",
-                    decoration: InputDecoration(
-                      // 输入框的标签文本
-                      labelText: S.of(context).text_proxy_passworld,
-                      // 输入框的边框样式
-                      border: const OutlineInputBorder(),
+                    controller: _controller_dnsServer,
+                    decoration: const InputDecoration(
+                      labelText: 'DNS 服务器',
+                      hintText: 'https://1.1.1.1/dns-query',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.public),
+                      helperText: '支持 DoH 或传统 DNS (如 119.29.29.29:53)',
+                    ),
+                  ),
+                  const SizedBox(height: 10.0),
+                  
+                  // DNS 预设选项
+                  Wrap(
+                    spacing: 8.0,
+                    children: [
+                      FilterChip(
+                        label: const Text('Cloudflare DoH'),
+                        selected: _controller_dnsServer.text == 'https://1.1.1.1/dns-query',
+                        onSelected: (bool selected) {
+                          if (selected) {
+                            setState(() {
+                              _controller_dnsServer.text = 'https://1.1.1.1/dns-query';
+                            });
+                          }
+                        },
+                      ),
+                      FilterChip(
+                        label: const Text('Google DoH'),
+                        selected: _controller_dnsServer.text == 'https://8.8.8.8/dns-query',
+                        onSelected: (bool selected) {
+                          if (selected) {
+                            setState(() {
+                              _controller_dnsServer.text = 'https://8.8.8.8/dns-query';
+                            });
+                          }
+                        },
+                      ),
+                      FilterChip(
+                        label: const Text('DNSPod'),
+                        selected: _controller_dnsServer.text == '119.29.29.29:53',
+                        onSelected: (bool selected) {
+                          if (selected) {
+                            setState(() {
+                              _controller_dnsServer.text = '119.29.29.29:53';
+                            });
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20.0),
+
+                  // ========== ECH 域名 ==========
+                  TextField(
+                    controller: _controller_echDomain,
+                    decoration: const InputDecoration(
+                      labelText: 'ECH 域名',
+                      hintText: 'cloudflare-ech.com',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.security),
+                      helperText: '用于获取 ECH 配置的域名',
+                    ),
+                  ),
+                  const SizedBox(height: 20.0),
+
+                  // ========== 说明文字 ==========
+                  Container(
+                    padding: const EdgeInsets.all(12.0),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8.0),
+                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.info_outline, size: 20, color: Colors.blue),
+                            SizedBox(width: 8),
+                            Text(
+                              '配置说明',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          '• Workers 地址：Cloudflare Workers 的完整地址（域名:端口）\n'
+                          '• 监听地址：本地 SOCKS5 服务监听的地址和端口\n'
+                          '• 优选 IP：可选，Workers 的优选 IP 地址\n'
+                          '• Token：如果 Workers 需要认证则填写\n'
+                          '• DNS：推荐使用 DoH 提高隐私性\n'
+                          '• ECH：用于加密 SNI，提高安全性',
+                          style: TextStyle(fontSize: 12, color: Colors.black87),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             )));
   }
+}
+).hasMatch(value)) {
+                        _controller_preferredIP.text = value.substring(0, value.length - 1);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 20.0),
 
-  void checkConnect(context) async {
-    final ip = _controller_proxyHost.text;
-    final port = _controller_proxyPort.text;
+                  // ========== 固定 IP (可选) ==========
+                  TextField(
+                    controller: _controller_serverIP,
+                    decoration: const InputDecoration(
+                      labelText: '固定 IP (可选)',
+                      hintText: '不填则自动解析',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.dns),
+                      helperText: '用于指定Workers的IP地址，不填则通过DNS解析',
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (value) {
+                      // 校验IP地址格式
+                      if (value.isNotEmpty && 
+                          !RegExp(r'^[0-9.:]+$').hasMatch(value)) {
+                        _controller_serverIP.text = 
+                            value.substring(0, value.length - 1);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 20.0),
 
-    if (ip.isEmpty || port.isEmpty) {
-      return;
-    }
-    debugPrint("checkConnect:$ip:$port");
-    try {
-      final socket = await Socket.connect(ip, int.parse(port), timeout: const Duration(seconds: 1));
-      socket.close();
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('connect success'), backgroundColor: Colors.greenAccent));
-    } catch (e) {
-      debugPrint(e.toString());
-    }
+                  // ========== 认证 Token (可选) ==========
+                  TextField(
+                    controller: _controller_token,
+                    decoration: const InputDecoration(
+                      labelText: '认证 Token (可选)',
+                      hintText: '不填则无需认证',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.vpn_key),
+                    ),
+                  ),
+                  const SizedBox(height: 20.0),
+
+                  // ========== DNS 服务器 ==========
+                  TextField(
+                    controller: _controller_dnsServer,
+                    decoration: const InputDecoration(
+                      labelText: 'DNS 服务器',
+                      hintText: 'https://1.1.1.1/dns-query',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.public),
+                      helperText: '支持 DoH 或传统 DNS (如 119.29.29.29:53)',
+                    ),
+                  ),
+                  const SizedBox(height: 10.0),
+                  
+                  // DNS 预设选项
+                  Wrap(
+                    spacing: 8.0,
+                    children: [
+                      FilterChip(
+                        label: const Text('Cloudflare DoH'),
+                        selected: _controller_dnsServer.text == 'https://1.1.1.1/dns-query',
+                        onSelected: (bool selected) {
+                          if (selected) {
+                            setState(() {
+                              _controller_dnsServer.text = 'https://1.1.1.1/dns-query';
+                            });
+                          }
+                        },
+                      ),
+                      FilterChip(
+                        label: const Text('Google DoH'),
+                        selected: _controller_dnsServer.text == 'https://8.8.8.8/dns-query',
+                        onSelected: (bool selected) {
+                          if (selected) {
+                            setState(() {
+                              _controller_dnsServer.text = 'https://8.8.8.8/dns-query';
+                            });
+                          }
+                        },
+                      ),
+                      FilterChip(
+                        label: const Text('DNSPod'),
+                        selected: _controller_dnsServer.text == '119.29.29.29:53',
+                        onSelected: (bool selected) {
+                          if (selected) {
+                            setState(() {
+                              _controller_dnsServer.text = '119.29.29.29:53';
+                            });
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20.0),
+
+                  // ========== ECH 域名 ==========
+                  TextField(
+                    controller: _controller_echDomain,
+                    decoration: const InputDecoration(
+                      labelText: 'ECH 域名',
+                      hintText: 'cloudflare-ech.com',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.security),
+                      helperText: '用于获取 ECH 配置的域名',
+                    ),
+                  ),
+                  const SizedBox(height: 20.0),
+
+                  // ========== 说明文字 ==========
+                  Container(
+                    padding: const EdgeInsets.all(12.0),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8.0),
+                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.info_outline, size: 20, color: Colors.blue),
+                            SizedBox(width: 8),
+                            Text(
+                              '配置说明',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          '• Workers 地址：Cloudflare Workers 的完整地址\n'
+                          '• 优选 IP：可选，优选的中转节点地址和端口\n'
+                          '• 固定 IP：可选，用于绕过 DNS 解析\n'
+                          '• Token：如果 Workers 需要认证则填写\n'
+                          '• DNS：推荐使用 DoH 提高隐私性\n'
+                          '• ECH：用于加密 SNI，提高安全性',
+                          style: TextStyle(fontSize: 12, color: Colors.black87),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            )));
   }
 }
+).hasMatch(value)) {
+                        _controller_serverIP.text = 
+                            value.substring(0, value.length - 1);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 20.0),
 
-class ProxyType extends StatefulWidget {
-  const ProxyType({super.key, required this.controller});
+                  // ========== 认证 Token (可选) ==========
+                  TextField(
+                    controller: _controller_token,
+                    decoration: const InputDecoration(
+                      labelText: '认证 Token (可选)',
+                      hintText: '不填则无需认证',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.vpn_key),
+                    ),
+                  ),
+                  const SizedBox(height: 20.0),
 
-  final TextEditingController controller;
+                  // ========== DNS 服务器 ==========
+                  TextField(
+                    controller: _controller_dnsServer,
+                    decoration: const InputDecoration(
+                      labelText: 'DNS 服务器',
+                      hintText: 'https://1.1.1.1/dns-query',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.public),
+                      helperText: '支持 DoH 或传统 DNS (如 119.29.29.29:53)',
+                    ),
+                  ),
+                  const SizedBox(height: 10.0),
+                  
+                  // DNS 预设选项
+                  Wrap(
+                    spacing: 8.0,
+                    children: [
+                      FilterChip(
+                        label: const Text('Cloudflare DoH'),
+                        selected: _controller_dnsServer.text == 'https://1.1.1.1/dns-query',
+                        onSelected: (bool selected) {
+                          if (selected) {
+                            setState(() {
+                              _controller_dnsServer.text = 'https://1.1.1.1/dns-query';
+                            });
+                          }
+                        },
+                      ),
+                      FilterChip(
+                        label: const Text('Google DoH'),
+                        selected: _controller_dnsServer.text == 'https://8.8.8.8/dns-query',
+                        onSelected: (bool selected) {
+                          if (selected) {
+                            setState(() {
+                              _controller_dnsServer.text = 'https://8.8.8.8/dns-query';
+                            });
+                          }
+                        },
+                      ),
+                      FilterChip(
+                        label: const Text('DNSPod'),
+                        selected: _controller_dnsServer.text == '119.29.29.29:53',
+                        onSelected: (bool selected) {
+                          if (selected) {
+                            setState(() {
+                              _controller_dnsServer.text = '119.29.29.29:53';
+                            });
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20.0),
 
-  @override
-  State<ProxyType> createState() => _ProxyTypeState();
-}
+                  // ========== ECH 域名 ==========
+                  TextField(
+                    controller: _controller_echDomain,
+                    decoration: const InputDecoration(
+                      labelText: 'ECH 域名',
+                      hintText: 'cloudflare-ech.com',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.security),
+                      helperText: '用于获取 ECH 配置的域名',
+                    ),
+                  ),
+                  const SizedBox(height: 20.0),
 
-enum proxyItem {
-  http('http'),
-  socks5('socks5');
-
-  const proxyItem(this.label);
-
-  final String label;
-}
-
-class _ProxyTypeState extends State<ProxyType> {
-  String defaultValue = 'socks5';
-  proxyItem? selectedItem;
-
-  void onChanged(String? newValue) {
-    setState(() {
-      defaultValue = newValue!;
-    });
+                  // ========== 说明文字 ==========
+                  Container(
+                    padding: const EdgeInsets.all(12.0),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8.0),
+                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.info_outline, size: 20, color: Colors.blue),
+                            SizedBox(width: 8),
+                            Text(
+                              '配置说明',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          '• Workers 地址：Cloudflare Workers 的完整地址\n'
+                          '• 优选 IP：可选，优选的中转节点地址和端口\n'
+                          '• 固定 IP：可选，用于绕过 DNS 解析\n'
+                          '• Token：如果 Workers 需要认证则填写\n'
+                          '• DNS：推荐使用 DoH 提高隐私性\n'
+                          '• ECH：用于加密 SNI，提高安全性',
+                          style: TextStyle(fontSize: 12, color: Colors.black87),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            )));
   }
+}
+).hasMatch(value)) {
+                        _controller_preferredIP.text = value.substring(0, value.length - 1);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 20.0),
 
-  @override
-  Widget build(BuildContext context) {
-    return DropdownMenu<proxyItem>(
-      menuStyle: MenuStyle(
-        backgroundColor: WidgetStateProperty.all(Colors.purple[100]),
-      ),
-      // 设置DropdownMenu的宽度将与其父级的宽度相同
-      expandedInsets: EdgeInsets.zero,
-      // 设置初始选中项为_http
-      initialSelection: widget.controller.text == defaultValue ? proxyItem.socks5 : proxyItem.http,
-      // 关联的控制器
-      controller: widget.controller,
-      // 点击时不自动获取焦点
-      requestFocusOnTap: false,
-      // 禁用搜索功能
-      enableSearch: false,
-      // 菜单标签
-      label: Text(S.of(context).text_proxy_type),
-      // 选择项时的回调
-      onSelected: (proxyItem? item) {
-        setState(() {
-          selectedItem = item;
-        });
-      },
-      // 生成下拉菜单项的列表
-      dropdownMenuEntries: proxyItem.values.map<DropdownMenuEntry<proxyItem>>((proxyItem item) {
-        // 为每个proxyItem生成一个DropdownMenuEntry
-        return DropdownMenuEntry<proxyItem>(
-          value: item, // 设置菜单项的值
-          label: item.label, // 设置菜单项的显示文本
-        );
-      }).toList(),
-    );
+                  // ========== 固定 IP (可选) ==========
+                  TextField(
+                    controller: _controller_serverIP,
+                    decoration: const InputDecoration(
+                      labelText: '固定 IP (可选)',
+                      hintText: '不填则自动解析',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.dns),
+                      helperText: '用于指定Workers的IP地址，不填则通过DNS解析',
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (value) {
+                      // 校验IP地址格式
+                      if (value.isNotEmpty && 
+                          !RegExp(r'^[0-9.:]+$').hasMatch(value)) {
+                        _controller_serverIP.text = 
+                            value.substring(0, value.length - 1);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 20.0),
+
+                  // ========== 认证 Token (可选) ==========
+                  TextField(
+                    controller: _controller_token,
+                    decoration: const InputDecoration(
+                      labelText: '认证 Token (可选)',
+                      hintText: '不填则无需认证',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.vpn_key),
+                    ),
+                  ),
+                  const SizedBox(height: 20.0),
+
+                  // ========== DNS 服务器 ==========
+                  TextField(
+                    controller: _controller_dnsServer,
+                    decoration: const InputDecoration(
+                      labelText: 'DNS 服务器',
+                      hintText: 'https://1.1.1.1/dns-query',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.public),
+                      helperText: '支持 DoH 或传统 DNS (如 119.29.29.29:53)',
+                    ),
+                  ),
+                  const SizedBox(height: 10.0),
+                  
+                  // DNS 预设选项
+                  Wrap(
+                    spacing: 8.0,
+                    children: [
+                      FilterChip(
+                        label: const Text('Cloudflare DoH'),
+                        selected: _controller_dnsServer.text == 'https://1.1.1.1/dns-query',
+                        onSelected: (bool selected) {
+                          if (selected) {
+                            setState(() {
+                              _controller_dnsServer.text = 'https://1.1.1.1/dns-query';
+                            });
+                          }
+                        },
+                      ),
+                      FilterChip(
+                        label: const Text('Google DoH'),
+                        selected: _controller_dnsServer.text == 'https://8.8.8.8/dns-query',
+                        onSelected: (bool selected) {
+                          if (selected) {
+                            setState(() {
+                              _controller_dnsServer.text = 'https://8.8.8.8/dns-query';
+                            });
+                          }
+                        },
+                      ),
+                      FilterChip(
+                        label: const Text('DNSPod'),
+                        selected: _controller_dnsServer.text == '119.29.29.29:53',
+                        onSelected: (bool selected) {
+                          if (selected) {
+                            setState(() {
+                              _controller_dnsServer.text = '119.29.29.29:53';
+                            });
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20.0),
+
+                  // ========== ECH 域名 ==========
+                  TextField(
+                    controller: _controller_echDomain,
+                    decoration: const InputDecoration(
+                      labelText: 'ECH 域名',
+                      hintText: 'cloudflare-ech.com',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.security),
+                      helperText: '用于获取 ECH 配置的域名',
+                    ),
+                  ),
+                  const SizedBox(height: 20.0),
+
+                  // ========== 说明文字 ==========
+                  Container(
+                    padding: const EdgeInsets.all(12.0),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8.0),
+                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.info_outline, size: 20, color: Colors.blue),
+                            SizedBox(width: 8),
+                            Text(
+                              '配置说明',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          '• Workers 地址：Cloudflare Workers 的完整地址\n'
+                          '• 优选 IP：可选，优选的中转节点地址和端口\n'
+                          '• 固定 IP：可选，用于绕过 DNS 解析\n'
+                          '• Token：如果 Workers 需要认证则填写\n'
+                          '• DNS：推荐使用 DoH 提高隐私性\n'
+                          '• ECH：用于加密 SNI，提高安全性',
+                          style: TextStyle(fontSize: 12, color: Colors.black87),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            )));
   }
 }

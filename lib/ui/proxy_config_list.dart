@@ -84,12 +84,14 @@ class _ProxyListHomeState extends State<ProxyListHome> {
     if (isAdd) {
       for (var item in _dataLists) {
         if (item['proxyName'] == data['proxyName']) {
-          item['proxyName'] = data['proxyName'];
+          // 更新现有配置
           item['proxyType'] = data['proxyType'];
-          item['proxyHost'] = data['proxyHost'];
-          item['proxyPort'] = data['proxyPort'];
-          item['proxyUser'] = data['proxyUser'];
-          item['proxyPass'] = data['proxyPass'];
+          item['serverAddr'] = data['serverAddr'];
+          item['listenAddr'] = data['listenAddr'];
+          item['preferredIP'] = data['preferredIP'];
+          item['token'] = data['token'];
+          item['dnsServer'] = data['dnsServer'];
+          item['echDomain'] = data['echDomain'];
           break;
         }
       }
@@ -98,7 +100,7 @@ class _ProxyListHomeState extends State<ProxyListHome> {
     }
     _proxyConfigData.addProxyConfig(_dataLists).then((value) {});
     setState(() {
-      debugPrint('Received data: $_dataLists _dataLists lenth:${_dataLists.length}');
+      debugPrint('Received data: $_dataLists _dataLists length:${_dataLists.length}');
     });
   }
 
@@ -107,7 +109,7 @@ class _ProxyListHomeState extends State<ProxyListHome> {
     _dataLists.removeWhere((item) => item['proxyName'] == data['proxyName']);
     _proxyConfigData.deleteProxyConfig(_dataLists);
     setState(() {
-      debugPrint('delete data: $_dataLists _dataLists lenth:${_dataLists.length}');
+      debugPrint('delete data: $_dataLists _dataLists length:${_dataLists.length}');
     });
   }
 
@@ -165,7 +167,7 @@ class _ProxyListHomeState extends State<ProxyListHome> {
 
   // 启动VPN
   void _startProxy(data) async {
-    if (await AppSetings.getCheckWifi()){
+    if (await AppSetings.getCheckWifi()) {
       bool isWifi = await _checkWifiState();
       if (!isWifi) {
         return;
@@ -205,7 +207,6 @@ class _ProxyListHomeState extends State<ProxyListHome> {
 
   @override
   Widget build(BuildContext context) {
-    // debugPrint("---- ProxyListHome build call: $_dataLists");
     return Scaffold(
       appBar: AppBar(
         title: Text('Server ${S.of(context).text_server_config}'),
@@ -224,6 +225,34 @@ class _ProxyListHomeState extends State<ProxyListHome> {
         },
         itemBuilder: (BuildContext context, int c_index) {
           Map<String, dynamic> c_data = _dataLists[c_index];
+          
+          // ========== 关键修改：显示格式 ==========
+          // 提取配置信息
+          String proxyName = c_data["proxyName"] ?? "未命名";
+          String serverAddr = c_data["serverAddr"] ?? "未配置";
+          String listenAddr = c_data["listenAddr"] ?? "127.0.0.1:1080";
+          String preferredIP = c_data["preferredIP"] ?? "";
+          String proxyType = c_data["proxyType"] ?? "echproxy";
+          
+          // 构建副标题文本
+          String subtitle;
+          if (proxyType == "echproxy") {
+            // 新配置格式
+            subtitle = 'Workers: $serverAddr\n监听: $listenAddr';
+            if (preferredIP.isNotEmpty) {
+              subtitle += '\n优选IP: $preferredIP';
+            }
+          } else {
+            // 兼容旧配置格式（如果存在）
+            String host = c_data["proxyHost"] ?? "";
+            String port = c_data["proxyPort"] ?? "";
+            if (host.isNotEmpty && port.isNotEmpty) {
+              subtitle = '$proxyType $host:$port (旧配置)';
+            } else {
+              subtitle = '配置格式错误';
+            }
+          }
+          
           return Card(
             // 设置 margin 为水平方向 8.0，垂直方向 4.0
             margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
@@ -232,9 +261,15 @@ class _ProxyListHomeState extends State<ProxyListHome> {
                   // 设置选中状态
                   value: _isSelectedProxyName == c_data["proxyName"] ? true : false,
                   // 设置标题和副标题
-                  title: Text('${c_data["proxyName"]}'),
-                  subtitle:
-                      Text('${c_data["proxyType"]} ${c_data["proxyHost"]}:${c_data["proxyPort"]}'),
+                  title: Text(proxyName),
+                  subtitle: Text(subtitle),
+                  // 添加图标显示配置类型
+                  secondary: Icon(
+                    proxyType == "echproxy" ? Icons.cloud_queue : Icons.settings_ethernet,
+                    color: _isSelectedProxyName == c_data["proxyName"] 
+                        ? Colors.purple 
+                        : Colors.grey,
+                  ),
                   // 设置switch的onChanged事件
                   onChanged: (bool value) {
                     setState(() {
@@ -252,7 +287,7 @@ class _ProxyListHomeState extends State<ProxyListHome> {
                   debugPrint("long press delete:${c_data["proxyName"]}");
                   _showDeleteDialog(context, c_data);
                 },
-                // 设置双击事件
+                // 设置双击事件 - 编辑配置
                 onDoubleTap: () {
                   Navigator.push(context, MaterialPageRoute(builder: (BuildContext context) {
                     return AddProxyWidget(onDataFetched: handleConfigData, onData: c_data);
@@ -276,7 +311,6 @@ class AddProxyButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // proxyConfigData.readProxyConfig();
     return InkWell(
         // 点击事件处理函数
         onTap: () {
@@ -311,8 +345,8 @@ class AddProxyButton extends StatelessWidget {
             ],
           ),
 
-          // 在UI中创建一个带内边距的子组件，用于显示“添加代理”按钮
-          child: Padding(
+          // 在UI中创建一个带内边距的子组件，用于显示"添加代理"按钮
+          child: const Padding(
               // 设置四周的内边距为8.0
               padding: EdgeInsets.all(8.0),
               // 使用IntrinsicWidth组件来确定其子组件的自然宽度
@@ -326,15 +360,15 @@ class AddProxyButton extends StatelessWidget {
                   // 子组件数组，包括一个图标和一个文本
                   children: [
                     // 添加图标组件
-                    const Icon(Icons.add, color: Colors.white),
+                    Icon(Icons.add, color: Colors.white),
                     // 在图标和文本之间添加一个宽度为10.0的空白间隔
-                    const SizedBox(width: 5.0),
-                    // 添加文本组件，显示“添加代理”文本
+                    SizedBox(width: 5.0),
+                    // 添加文本组件，显示"添加代理"文本
                     Text(
-                      S.of(context).text_add_proxy,
-                      style: const TextStyle(fontSize: 16.0, color: Colors.white),
+                      '添加配置',
+                      style: TextStyle(fontSize: 16.0, color: Colors.white),
                     ),
-                    const SizedBox(width: 5.0),
+                    SizedBox(width: 5.0),
                   ],
                 ),
               )),
