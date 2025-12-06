@@ -46,6 +46,40 @@ jobs:
           KEYSTORE_PASSWORD="${{ secrets.KEYSTORE_PASSWORD }}"
         fi
         
+        # 保存密码信息到文件
+        mkdir -p output
+        cat > output/KEYSTORE_INFO.txt <<EOFINFO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AppProxy Release Keystore Information
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️  请妥善保管此文件和 keystore 文件！
+
+Keystore File: release.jks
+KEY_ALIAS: release
+KEY_PASSWORD: $KEY_PASSWORD
+KEYSTORE_PASSWORD: $KEYSTORE_PASSWORD
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+如何添加到 GitHub Secrets:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. 进入仓库的 Settings
+2. 点击 Secrets and variables -> Actions
+3. 点击 New repository secret
+4. 添加以下 secrets:
+   - Name: KEY_PASSWORD
+     Value: $KEY_PASSWORD
+   
+   - Name: KEYSTORE_PASSWORD
+     Value: $KEYSTORE_PASSWORD
+
+5. 将 release.jks 文件保存到安全位置
+
+后续构建时，workflow 会从 Secrets 读取这些密码。
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EOFINFO
+        
         # 生成密钥库
         keytool -genkey -v \
           -keystore android/app/keystore/release.jks \
@@ -57,99 +91,61 @@ jobs:
           -keypass "$KEY_PASSWORD" \
           -dname "CN=AppProxy, OU=Development, O=YS1231, L=Tokyo, S=Tokyo, C=JP"
         
-        # 保存密码到文件（用于本次构建）
-        echo "KEY_ALIAS=release" > /tmp/signing.properties
-        echo "KEY_PASSWORD=$KEY_PASSWORD" >> /tmp/signing.properties
-        echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> /tmp/signing.properties
-        echo "KEYSTORE_FILE=keystore/release.jks" >> /tmp/signing.properties
-        
-        # 创建 key.properties 文件
-        echo "storePassword=$KEYSTORE_PASSWORD" > android/key.properties
-        echo "keyPassword=$KEY_PASSWORD" >> android/key.properties
-        echo "keyAlias=release" >> android/key.properties
-        echo "storeFile=keystore/release.jks" >> android/key.properties
-        
         echo "✅ Keystore generated successfully"
+        echo "KEY_ALIAS=release" >> $GITHUB_ENV
         echo "KEY_PASSWORD=$KEY_PASSWORD" >> $GITHUB_ENV
         echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
         
+        # 显示生成的密码（仅在首次运行时）
+        if [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
+          echo ""
+          echo "⚠️  首次构建 - 请保存以下密码信息！"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔑 KEY_ALIAS=release"
+          echo "🔑 KEY_PASSWORD=$KEY_PASSWORD"
+          echo "🔑 KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "📝 请将以上密码添加到 GitHub Secrets："
+          echo "   Settings -> Secrets and variables -> Actions -> New repository secret"
+          echo ""
+          echo "💾 请从 Artifacts 下载 release-keystore 并妥善保管"
+          echo ""
+        fi
+        
+    - name: Create local.properties with keystore path
+      run: |
+        # 创建或更新 local.properties
+        cat > android/local.properties <<EOF
+sdk.dir=$ANDROID_HOME
+flutter.sdk=$FLUTTER_ROOT
+flutter.versionCode=1
+flutter.versionName=1.0.0
+flutter.keystore=app/keystore/release.jks
+flutter.ndkVersion=29.0.13113456
+EOF
+        
+        echo "📝 Created local.properties:"
+        cat android/local.properties
+        
     - name: Update build.gradle for signing
       run: |
-        # 备份原始文件
-        cp android/app/build.gradle android/app/build.gradle.bak
-        
-        # 检查是否已经有我们的配置
-        if ! grep -q "def keystorePropertiesFile = rootProject.file" android/app/build.gradle; then
-          # 创建 keystore 配置（插入到 plugins 块之后）
-          awk '
-          /^plugins \{/,/^\}/ {
-            print
-            if (/^\}/ && !done) {
-              print ""
-              print "def keystorePropertiesFile = rootProject.file(\"key.properties\")"
-              print "def keystoreProperties = new Properties()"
-              print "if (keystorePropertiesFile.exists()) {"
-              print "    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))"
-              print "}"
-              print ""
-              done=1
-            }
-            next
-          }
-          { print }
-          ' android/app/build.gradle.bak > android/app/build.gradle
-        fi
-        
-        # 添加 signingConfigs（如果不存在）
-        if ! grep -q "signingConfigs {" android/app/build.gradle; then
-          # 在 android { 后面添加 signingConfigs
-          awk '
-          /^[[:space:]]*android \{/ {
-            print $0
-            print "    signingConfigs {"
-            print "        release {"
-            print "            if (keystorePropertiesFile.exists()) {"
-            print "                keyAlias keystoreProperties[\"keyAlias\"]"
-            print "                keyPassword keystoreProperties[\"keyPassword\"]"
-            print "                storeFile file(keystoreProperties[\"storeFile\"])"
-            print "                storePassword keystoreProperties[\"storePassword\"]"
-            print "            }"
-            print "        }"
-            print "    }"
-            print ""
-            next
-          }
-          { print }
-          ' android/app/build.gradle > /tmp/build.gradle.new
-          mv /tmp/build.gradle.new android/app/build.gradle
-        fi
-        
-        # 确保 release buildType 使用签名配置
-        if ! grep -q "signingConfig signingConfigs.release" android/app/build.gradle; then
-          awk '
-          /^[[:space:]]*buildTypes \{/,/^[[:space:]]*release \{/ {
-            if (/^[[:space:]]*release \{/ && !done) {
-              print $0
-              print "            signingConfig signingConfigs.release"
-              done=1
-              next
-            }
-          }
-          { print }
-          ' android/app/build.gradle > /tmp/build.gradle.new
-          mv /tmp/build.gradle.new android/app/build.gradle
-        fi
-        
-        echo "📝 Updated build.gradle (first 50 lines):"
-        head -50 android/app/build.gradle
+        echo "✅ build.gradle already has signing configuration"
+        echo "📝 Current signingConfigs in build.gradle:"
+        sed -n '/signingConfigs {/,/^    }/p' android/app/build.gradle
         
     - name: Verify signing configuration
       run: |
-        echo "🔍 Checking key.properties:"
-        cat android/key.properties
+        echo "🔍 Checking local.properties:"
+        cat android/local.properties
         echo ""
         echo "🔍 Checking keystore file:"
         ls -la android/app/keystore/
+        echo ""
+        echo "🔍 Checking environment variables:"
+        echo "KEY_ALIAS is set: $([ -n "$KEY_ALIAS" ] && echo 'yes' || echo 'no')"
+        echo "KEY_PASSWORD is set: $([ -n "$KEY_PASSWORD" ] && echo 'yes' || echo 'no')"
+        echo "KEYSTORE_PASSWORD is set: $([ -n "$KEYSTORE_PASSWORD" ] && echo 'yes' || echo 'no')"
         
     - name: Build APK (Release)
       run: |
@@ -208,9 +204,14 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: release-keystore
-        path: |
-          android/app/keystore/release.jks
-          android/key.properties
+        path: android/app/keystore/release.jks
+        retention-days: 90
+        
+    - name: Upload keystore info
+      uses: actions/upload-artifact@v4
+      with:
+        name: keystore-info
+        path: output/KEYSTORE_INFO.txt
         retention-days: 90
         
     - name: Create Release
