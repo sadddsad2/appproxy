@@ -41,44 +41,20 @@ jobs:
         if [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
           KEY_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
           KEYSTORE_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+          
+          echo "🔐 生成新密码..."
+          
+          # 使用 GitHub CLI 设置 Secrets
+          echo "$KEY_PASSWORD" | gh secret set KEY_PASSWORD
+          echo "$KEYSTORE_PASSWORD" | gh secret set KEYSTORE_PASSWORD
+          
+          echo "✅ 密码已自动保存到 GitHub Secrets"
         else
           KEY_PASSWORD="${{ secrets.KEY_PASSWORD }}"
           KEYSTORE_PASSWORD="${{ secrets.KEYSTORE_PASSWORD }}"
+          
+          echo "✅ 使用已保存的密码"
         fi
-        
-        # 保存密码信息到文件
-        mkdir -p output
-        cat > output/KEYSTORE_INFO.txt <<EOFINFO
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-AppProxy Release Keystore Information
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-⚠️  请妥善保管此文件和 keystore 文件！
-
-Keystore File: release.jks
-KEY_ALIAS: release
-KEY_PASSWORD: $KEY_PASSWORD
-KEYSTORE_PASSWORD: $KEYSTORE_PASSWORD
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-如何添加到 GitHub Secrets:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-1. 进入仓库的 Settings
-2. 点击 Secrets and variables -> Actions
-3. 点击 New repository secret
-4. 添加以下 secrets:
-   - Name: KEY_PASSWORD
-     Value: $KEY_PASSWORD
-   
-   - Name: KEYSTORE_PASSWORD
-     Value: $KEYSTORE_PASSWORD
-
-5. 将 release.jks 文件保存到安全位置
-
-后续构建时，workflow 会从 Secrets 读取这些密码。
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-EOFINFO
         
         # 生成密钥库
         keytool -genkey -v \
@@ -96,56 +72,128 @@ EOFINFO
         echo "KEY_PASSWORD=$KEY_PASSWORD" >> $GITHUB_ENV
         echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
         
-        # 显示生成的密码（仅在首次运行时）
-        if [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
-          echo ""
-          echo "⚠️  首次构建 - 请保存以下密码信息！"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🔑 KEY_ALIAS=release"
-          echo "🔑 KEY_PASSWORD=$KEY_PASSWORD"
-          echo "🔑 KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo ""
-          echo "📝 请将以上密码添加到 GitHub Secrets："
-          echo "   Settings -> Secrets and variables -> Actions -> New repository secret"
-          echo ""
-          echo "💾 请从 Artifacts 下载 release-keystore 并妥善保管"
-          echo ""
-        fi
+        # 保存密码信息到文件（备份用）
+        mkdir -p output
+        cat > output/KEYSTORE_INFO.txt <<EOFINFO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AppProxy Release Keystore Information
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ 密码已自动保存到 GitHub Secrets
+
+Keystore File: release.jks
+KEY_ALIAS: release
+KEY_PASSWORD: $KEY_PASSWORD
+KEYSTORE_PASSWORD: $KEYSTORE_PASSWORD
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+注意事项:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. ✅ 密码已自动保存到仓库的 Secrets
+2. 💾 请下载 release.jks 文件并妥善保管
+3. 📝 此信息文件仅作备份参考
+
+如需查看 Secrets:
+Settings -> Secrets and variables -> Actions
+
+后续构建会自动使用已保存的密码。
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EOFINFO
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
-    - name: Create local.properties with keystore path
+    - name: Modify build.gradle to remove local.properties dependency
       run: |
-        # 创建或更新 local.properties
-        cat > android/local.properties <<EOF
-sdk.dir=$ANDROID_HOME
-flutter.sdk=$FLUTTER_ROOT
-flutter.versionCode=1
-flutter.versionName=1.0.0
-flutter.keystore=app/keystore/release.jks
-flutter.ndkVersion=29.0.13113456
-EOF
+        cat > android/app/build.gradle <<'EOFGRADLE'
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withReader('UTF-8') { reader ->
+        localProperties.load(reader)
+    }
+}
+
+def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
+if (flutterVersionCode == null) {
+    flutterVersionCode = '1'
+}
+
+def flutterVersionName = localProperties.getProperty('flutter.versionName')
+if (flutterVersionName == null) {
+    flutterVersionName = '1.0'
+}
+
+def fndkVersion = localProperties.getProperty('flutter.ndkVersion')
+if (fndkVersion == null){
+    fndkVersion = "29.0.13113456"
+}
+
+android {
+    namespace "cn.ys1231.appproxy"
+    compileSdk flutter.compileSdkVersion
+    ndkVersion fndkVersion
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+
+    defaultConfig {
+        applicationId "cn.ys1231.appproxy"
+        minSdkVersion flutter.minSdkVersion
+        targetSdkVersion flutter.targetSdkVersion
+        versionCode flutterVersionCode.toInteger()
+        versionName flutterVersionName
+    }
+
+    signingConfigs {
+        debug {
+        }
+        release {
+            keyAlias System.getenv("KEY_ALIAS")
+            keyPassword System.getenv("KEY_PASSWORD")
+            storeFile file("keystore/release.jks")
+            storePassword System.getenv("KEYSTORE_PASSWORD")
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+        }
+        debug {
+            signingConfig signingConfigs.debug
+        }
+    }
+}
+
+flutter {
+    source '../..'
+}
+
+dependencies {
+    implementation(files("libs/tun2socks.aar"))
+    implementation(files("libs/echproxy.aar"))
+    implementation("com.google.code.gson:gson:2.11.0")
+}
+EOFGRADLE
         
-        echo "📝 Created local.properties:"
-        cat android/local.properties
-        
-    - name: Update build.gradle for signing
-      run: |
-        echo "✅ build.gradle already has signing configuration"
-        echo "📝 Current signingConfigs in build.gradle:"
-        sed -n '/signingConfigs {/,/^    }/p' android/app/build.gradle
-        
-    - name: Verify signing configuration
-      run: |
-        echo "🔍 Checking local.properties:"
-        cat android/local.properties
-        echo ""
-        echo "🔍 Checking keystore file:"
-        ls -la android/app/keystore/
-        echo ""
-        echo "🔍 Checking environment variables:"
-        echo "KEY_ALIAS is set: $([ -n "$KEY_ALIAS" ] && echo 'yes' || echo 'no')"
-        echo "KEY_PASSWORD is set: $([ -n "$KEY_PASSWORD" ] && echo 'yes' || echo 'no')"
-        echo "KEYSTORE_PASSWORD is set: $([ -n "$KEYSTORE_PASSWORD" ] && echo 'yes' || echo 'no')"
+        echo "✅ build.gradle 已修改为使用环境变量"
         
     - name: Build APK (Release)
       run: |
