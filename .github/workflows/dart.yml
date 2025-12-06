@@ -75,33 +75,68 @@ jobs:
         
     - name: Update build.gradle for signing
       run: |
-        if ! grep -q "def keystorePropertiesFile" android/app/build.gradle; then
-          echo "" >> /tmp/signing_config.gradle
+        # 备份原始文件
+        cp android/app/build.gradle android/app/build.gradle.bak
+        
+        # 检查是否已经有我们的配置
+        if ! grep -q "def keystorePropertiesFile = rootProject.file" android/app/build.gradle; then
+          # 在文件开头添加 keystore 配置
+          echo "" > /tmp/signing_config.gradle
           echo "def keystorePropertiesFile = rootProject.file(\"key.properties\")" >> /tmp/signing_config.gradle
           echo "def keystoreProperties = new Properties()" >> /tmp/signing_config.gradle
           echo "if (keystorePropertiesFile.exists()) {" >> /tmp/signing_config.gradle
           echo "    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))" >> /tmp/signing_config.gradle
           echo "}" >> /tmp/signing_config.gradle
+          echo "" >> /tmp/signing_config.gradle
           
-          sed -i '/^android {/r /tmp/signing_config.gradle' android/app/build.gradle
-          
-          if ! grep -q "signingConfigs {" android/app/build.gradle; then
-            echo "    signingConfigs {" > /tmp/signing_configs.gradle
-            echo "        release {" >> /tmp/signing_configs.gradle
-            echo "            keyAlias keystoreProperties['keyAlias']" >> /tmp/signing_configs.gradle
-            echo "            keyPassword keystoreProperties['keyPassword']" >> /tmp/signing_configs.gradle
-            echo "            storeFile file(keystoreProperties['storeFile'])" >> /tmp/signing_configs.gradle
-            echo "            storePassword keystoreProperties['storePassword']" >> /tmp/signing_configs.gradle
-            echo "        }" >> /tmp/signing_configs.gradle
-            echo "    }" >> /tmp/signing_configs.gradle
-            
-            sed -i '/^android {$/r /tmp/signing_configs.gradle' android/app/build.gradle
-          fi
-          
-          if ! grep -q "signingConfig signingConfigs.release" android/app/build.gradle; then
-            sed -i '/release {$/a\            signingConfig signingConfigs.release' android/app/build.gradle
-          fi
+          # 将新配置和原文件合并
+          cat /tmp/signing_config.gradle android/app/build.gradle.bak > android/app/build.gradle
         fi
+        
+        # 添加 signingConfigs（如果不存在）
+        if ! grep -q "signingConfigs {" android/app/build.gradle; then
+          # 在 android { 后面添加 signingConfigs
+          awk '/android \{/ {
+            print $0
+            print "    signingConfigs {"
+            print "        release {"
+            print "            if (keystorePropertiesFile.exists()) {"
+            print "                keyAlias keystoreProperties[\"keyAlias\"]"
+            print "                keyPassword keystoreProperties[\"keyPassword\"]"
+            print "                storeFile file(keystoreProperties[\"storeFile\"])"
+            print "                storePassword keystoreProperties[\"storePassword\"]"
+            print "            }"
+            print "        }"
+            print "    }"
+            next
+          }
+          { print }' android/app/build.gradle > /tmp/build.gradle.new
+          mv /tmp/build.gradle.new android/app/build.gradle
+        fi
+        
+        # 确保 release buildType 使用签名配置
+        if ! grep -q "signingConfig signingConfigs.release" android/app/build.gradle; then
+          awk '/buildTypes \{/,/release \{/ {
+            if (/release \{/) {
+              print $0
+              print "            signingConfig signingConfigs.release"
+              next
+            }
+          }
+          { print }' android/app/build.gradle > /tmp/build.gradle.new
+          mv /tmp/build.gradle.new android/app/build.gradle
+        fi
+        
+        echo "📝 Updated build.gradle:"
+        cat android/app/build.gradle
+        
+    - name: Verify signing configuration
+      run: |
+        echo "🔍 Checking key.properties:"
+        cat android/key.properties
+        echo ""
+        echo "🔍 Checking keystore file:"
+        ls -la android/app/keystore/
         
     - name: Build APK (Release)
       run: |
