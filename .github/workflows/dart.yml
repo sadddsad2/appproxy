@@ -1,0 +1,207 @@
+name: Build and Release APK
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+        
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.0'
+        channel: 'stable'
+        
+    - name: Get Flutter dependencies
+      run: flutter pub get
+      
+    - name: Generate signing keystore
+      run: |
+        # 创建密钥存储目录
+        mkdir -p android/app/keystore
+        
+        # 生成随机密码（如果没有在 Secrets 中设置）
+        if [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
+          KEY_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+          KEYSTORE_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+        else
+          KEY_PASSWORD="${{ secrets.KEY_PASSWORD }}"
+          KEYSTORE_PASSWORD="${{ secrets.KEYSTORE_PASSWORD }}"
+        fi
+        
+        # 生成密钥库
+        keytool -genkey -v \
+          -keystore android/app/keystore/release.jks \
+          -keyalg RSA \
+          -keysize 2048 \
+          -validity 10000 \
+          -alias release \
+          -storepass "$KEYSTORE_PASSWORD" \
+          -keypass "$KEY_PASSWORD" \
+          -dname "CN=AppProxy, OU=Development, O=YS1231, L=Tokyo, S=Tokyo, C=JP"
+        
+        # 保存密码到文件（用于本次构建）
+        echo "KEY_ALIAS=release" > /tmp/signing.properties
+        echo "KEY_PASSWORD=$KEY_PASSWORD" >> /tmp/signing.properties
+        echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> /tmp/signing.properties
+        echo "KEYSTORE_FILE=keystore/release.jks" >> /tmp/signing.properties
+        
+        # 创建 key.properties 文件
+        cat > android/key.properties <<EOF
+        storePassword=$KEYSTORE_PASSWORD
+        keyPassword=$KEY_PASSWORD
+        keyAlias=release
+        storeFile=keystore/release.jks
+        EOF
+        
+        echo "✅ Keystore generated successfully"
+        echo "KEY_PASSWORD=$KEY_PASSWORD" >> $GITHUB_ENV
+        echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
+        
+    - name: Update build.gradle for signing
+      run: |
+        # 如果 build.gradle 还没有配置签名，自动添加
+        if ! grep -q "def keystorePropertiesFile" android/app/build.gradle; then
+          cat > /tmp/signing_config.gradle <<'EOF'
+        
+        def keystorePropertiesFile = rootProject.file("key.properties")
+        def keystoreProperties = new Properties()
+        if (keystorePropertiesFile.exists()) {
+            keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+        }
+        EOF
+          
+          # 在 android { 之前插入
+          sed -i '/^android {/i\'"$(cat /tmp/signing_config.gradle)" android/app/build.gradle
+          
+          # 添加 signingConfigs（如果不存在）
+          if ! grep -q "signingConfigs {" android/app/build.gradle; then
+            sed -i '/android {/a\    signingConfigs {\n        release {\n            keyAlias keystoreProperties["keyAlias"]\n            keyPassword keystoreProperties["keyPassword"]\n            storeFile file(keystoreProperties["storeFile"])\n            storePassword keystoreProperties["storePassword"]\n        }\n    }' android/app/build.gradle
+          fi
+          
+          # 确保 release buildType 使用签名配置
+          sed -i '/buildTypes {/,/release {/s/release {/release {\n            signingConfig signingConfigs.release/' android/app/build.gradle
+        fi
+        
+    - name: Build APK (Release)
+      run: |
+        flutter build apk --release --split-per-abi
+        
+    - name: Build APK (Debug) 
+      if: github.event_name == 'pull_request'
+      run: |
+        flutter build apk --debug
+        
+    - name: Rename APK files
+      run: |
+        # 获取版本号
+        VERSION=$(grep "version:" pubspec.yaml | sed 's/version: //' | tr -d ' ')
+        
+        # 创建输出目录
+        mkdir -p output
+        
+        # 重命名文件
+        for file in build/app/outputs/flutter-apk/*.apk; do
+          if [ -f "$file" ]; then
+            filename=$(basename "$file")
+            if [[ $filename == *"arm64-v8a"* ]]; then
+              cp "$file" "output/appproxy-v${VERSION}-arm64-v8a-release.apk"
+            elif [[ $filename == *"armeabi-v7a"* ]]; then
+              cp "$file" "output/appproxy-v${VERSION}-armeabi-v7a-release.apk"
+            elif [[ $filename == *"x86_64"* ]]; then
+              cp "$file" "output/appproxy-v${VERSION}-x86_64-release.apk"
+            else
+              cp "$file" "output/appproxy-v${VERSION}-universal-release.apk"
+            fi
+          fi
+        done
+        
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        
+    - name: Generate SHA256 checksums
+      run: |
+        cd output
+        for file in *.apk; do
+          sha256sum "$file" > "$file.sha256"
+        done
+        cd ..
+        
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: apk-files
+        path: output/*.apk
+        retention-days: 30
+        
+    - name: Upload checksums
+      uses: actions/upload-artifact@v4
+      with:
+        name: checksums
+        path: output/*.sha256
+        retention-days: 30
+        
+    - name: Save keystore (first time only)
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-keystore
+        path: |
+          android/app/keystore/release.jks
+          android/key.properties
+        retention-days: 90
+        
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          output/*.apk
+          output/*.sha256
+        body: |
+          ## AppProxy ${{ env.VERSION }}
+          
+          ### 下载说明
+          - `arm64-v8a`: 适用于 64位 ARM 设备（推荐，大部分现代手机）
+          - `armeabi-v7a`: 适用于 32位 ARM 设备（旧设备）
+          - `x86_64`: 适用于 64位 x86 设备（模拟器）
+          - `universal`: 通用版本（包含所有架构，体积较大）
+          
+          ### SHA256 校验
+          每个 APK 都附带 `.sha256` 文件，可用于验证完整性。
+          
+          ### 自动构建信息
+          - 构建时间: ${{ github.event.head_commit.timestamp }}
+          - 提交信息: ${{ github.event.head_commit.message }}
+          - 提交者: ${{ github.event.head_commit.author.name }}
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Send build notification
+      if: always()
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          echo "✅ 构建成功！"
+          echo "📦 APK 文件已生成"
+          echo "🔑 签名密钥已保存（请在 Actions artifacts 中下载备份）"
+        else
+          echo "❌ 构建失败"
+        fi
