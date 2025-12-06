@@ -74,60 +74,42 @@ jobs:
         
         # 保存密码信息到文件（备份用）
         mkdir -p output
-        cat > output/KEYSTORE_INFO.txt <<EOFINFO
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-AppProxy Release Keystore Information
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✅ 密码已自动保存到 GitHub Secrets
-
-Keystore File: release.jks
-KEY_ALIAS: release
-KEY_PASSWORD: $KEY_PASSWORD
-KEYSTORE_PASSWORD: $KEYSTORE_PASSWORD
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-注意事项:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-1. ✅ 密码已自动保存到仓库的 Secrets
-2. 💾 请下载 release.jks 文件并妥善保管
-3. 📝 此信息文件仅作备份参考
-
-如需查看 Secrets:
-Settings -> Secrets and variables -> Actions
-
-后续构建会自动使用已保存的密码。
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-EOFINFO
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" > output/KEYSTORE_INFO.txt
+        echo "AppProxy Release Keystore Information" >> output/KEYSTORE_INFO.txt
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> output/KEYSTORE_INFO.txt
+        echo "" >> output/KEYSTORE_INFO.txt
+        echo "✅ 密码已自动保存到 GitHub Secrets" >> output/KEYSTORE_INFO.txt
+        echo "" >> output/KEYSTORE_INFO.txt
+        echo "Keystore File: release.jks" >> output/KEYSTORE_INFO.txt
+        echo "KEY_ALIAS: release" >> output/KEYSTORE_INFO.txt
+        echo "KEY_PASSWORD: $KEY_PASSWORD" >> output/KEYSTORE_INFO.txt
+        echo "KEYSTORE_PASSWORD: $KEYSTORE_PASSWORD" >> output/KEYSTORE_INFO.txt
+        echo "" >> output/KEYSTORE_INFO.txt
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> output/KEYSTORE_INFO.txt
+        echo "注意事项:" >> output/KEYSTORE_INFO.txt
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> output/KEYSTORE_INFO.txt
+        echo "" >> output/KEYSTORE_INFO.txt
+        echo "1. ✅ 密码已自动保存到仓库的 Secrets" >> output/KEYSTORE_INFO.txt
+        echo "2. 💾 请下载 release.jks 文件并妥善保管" >> output/KEYSTORE_INFO.txt
+        echo "3. 📝 此信息文件仅作备份参考" >> output/KEYSTORE_INFO.txt
+        echo "" >> output/KEYSTORE_INFO.txt
+        echo "如需查看 Secrets:" >> output/KEYSTORE_INFO.txt
+        echo "Settings -> Secrets and variables -> Actions" >> output/KEYSTORE_INFO.txt
+        echo "" >> output/KEYSTORE_INFO.txt
+        echo "后续构建会自动使用已保存的密码。" >> output/KEYSTORE_INFO.txt
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> output/KEYSTORE_INFO.txt
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
     - name: Modify build.gradle to remove local.properties dependency
       run: |
         cp android/app/build.gradle android/app/build.gradle.bak
-        
-        cat android/app/build.gradle.bak | sed 's/def keystore = localProperties.getProperty.*//g' | sed 's/if (keystore == null){//g' | sed 's/throw new Exception("flutter.keystore is not set in local.properties")//g' | sed 's/}$//g' > /tmp/build1.gradle
-        
-        awk '
-        /signingConfigs \{/,/release \{/ {
-          if (/release \{/) {
-            print "        release {"
-            print "            keyAlias System.getenv(\"KEY_ALIAS\")"
-            print "            keyPassword System.getenv(\"KEY_PASSWORD\")"
-            print "            storeFile file(\"keystore/release.jks\")"
-            print "            storePassword System.getenv(\"KEYSTORE_PASSWORD\")"
-            found=1
-            next
-          }
-        }
-        /storeFile file\(keystore\)/ && found { next }
-        { print }
-        ' /tmp/build1.gradle > android/app/build.gradle
-        
-        echo "✅ build.gradle 已修改为使用环境变量"
-        echo "📝 修改后的 signingConfigs:"
-        sed -n '/signingConfigs {/,/^    }/p' android/app/build.gradle
+        sed -i '/def keystore = localProperties.getProperty/,/}/d' android/app/build.gradle
+        sed -i 's|storeFile file(keystore)|storeFile file("keystore/release.jks")|g' android/app/build.gradle
+        sed -i 's|keyAlias System.getenv("KEY_ALIAS")|keyAlias System.getenv("KEY_ALIAS")|g' android/app/build.gradle
+        sed -i 's|keyPassword System.getenv("KEY_PASSWORD")|keyPassword System.getenv("KEY_PASSWORD")|g' android/app/build.gradle
+        sed -i 's|storePassword System.getenv("KEYSTORE_PASSWORD")|storePassword System.getenv("KEYSTORE_PASSWORD")|g' android/app/build.gradle
+        echo "✅ build.gradle modified successfully"
         
     - name: Build APK (Release)
       run: |
