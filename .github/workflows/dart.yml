@@ -80,24 +80,36 @@ jobs:
         # 如果 build.gradle 还没有配置签名，自动添加
         if ! grep -q "def keystorePropertiesFile" android/app/build.gradle; then
           cat > /tmp/signing_config.gradle <<'EOF'
-        
-        def keystorePropertiesFile = rootProject.file("key.properties")
-        def keystoreProperties = new Properties()
-        if (keystorePropertiesFile.exists()) {
-            keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-        }
-        EOF
+
+def keystorePropertiesFile = rootProject.file("key.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+EOF
           
           # 在 android { 之前插入
-          sed -i '/^android {/i\'"$(cat /tmp/signing_config.gradle)" android/app/build.gradle
+          sed -i '/^android {/r /tmp/signing_config.gradle' android/app/build.gradle
           
           # 添加 signingConfigs（如果不存在）
           if ! grep -q "signingConfigs {" android/app/build.gradle; then
-            sed -i '/android {/a\    signingConfigs {\n        release {\n            keyAlias keystoreProperties["keyAlias"]\n            keyPassword keystoreProperties["keyPassword"]\n            storeFile file(keystoreProperties["storeFile"])\n            storePassword keystoreProperties["storePassword"]\n        }\n    }' android/app/build.gradle
+            cat > /tmp/signing_configs.gradle <<'EOF'
+    signingConfigs {
+        release {
+            keyAlias keystoreProperties['keyAlias']
+            keyPassword keystoreProperties['keyPassword']
+            storeFile file(keystoreProperties['storeFile'])
+            storePassword keystoreProperties['storePassword']
+        }
+    }
+EOF
+            sed -i '/^android {$/r /tmp/signing_configs.gradle' android/app/build.gradle
           fi
           
           # 确保 release buildType 使用签名配置
-          sed -i '/buildTypes {/,/release {/s/release {/release {\n            signingConfig signingConfigs.release/' android/app/build.gradle
+          if ! grep -q "signingConfig signingConfigs.release" android/app/build.gradle; then
+            sed -i '/release {$/a\            signingConfig signingConfigs.release' android/app/build.gradle
+          fi
         fi
         
     - name: Build APK (Release)
