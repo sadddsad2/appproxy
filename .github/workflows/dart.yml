@@ -105,99 +105,29 @@ EOFINFO
         
     - name: Modify build.gradle to remove local.properties dependency
       run: |
-        python3 << 'PYSCRIPT'
-content = '''plugins {
-    id "com.android.application"
-    id "kotlin-android"
-    id "dev.flutter.flutter-gradle-plugin"
-}
-
-def localProperties = new Properties()
-def localPropertiesFile = rootProject.file('local.properties')
-if (localPropertiesFile.exists()) {
-    localPropertiesFile.withReader('UTF-8') { reader ->
-        localProperties.load(reader)
-    }
-}
-
-def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
-if (flutterVersionCode == null) {
-    flutterVersionCode = '1'
-}
-
-def flutterVersionName = localProperties.getProperty('flutter.versionName')
-if (flutterVersionName == null) {
-    flutterVersionName = '1.0'
-}
-
-def fndkVersion = localProperties.getProperty('flutter.ndkVersion')
-if (fndkVersion == null){
-    fndkVersion = "29.0.13113456"
-}
-
-android {
-    namespace "cn.ys1231.appproxy"
-    compileSdk flutter.compileSdkVersion
-    ndkVersion fndkVersion
-
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-    }
-
-    kotlinOptions {
-        jvmTarget = '1.8'
-    }
-
-    sourceSets {
-        main.java.srcDirs += 'src/main/kotlin'
-    }
-
-    defaultConfig {
-        applicationId "cn.ys1231.appproxy"
-        minSdkVersion flutter.minSdkVersion
-        targetSdkVersion flutter.targetSdkVersion
-        versionCode flutterVersionCode.toInteger()
-        versionName flutterVersionName
-    }
-
-    signingConfigs {
-        debug {
+        cp android/app/build.gradle android/app/build.gradle.bak
+        
+        cat android/app/build.gradle.bak | sed 's/def keystore = localProperties.getProperty.*//g' | sed 's/if (keystore == null){//g' | sed 's/throw new Exception("flutter.keystore is not set in local.properties")//g' | sed 's/}$//g' > /tmp/build1.gradle
+        
+        awk '
+        /signingConfigs \{/,/release \{/ {
+          if (/release \{/) {
+            print "        release {"
+            print "            keyAlias System.getenv(\"KEY_ALIAS\")"
+            print "            keyPassword System.getenv(\"KEY_PASSWORD\")"
+            print "            storeFile file(\"keystore/release.jks\")"
+            print "            storePassword System.getenv(\"KEYSTORE_PASSWORD\")"
+            found=1
+            next
+          }
         }
-        release {
-            keyAlias System.getenv("KEY_ALIAS")
-            keyPassword System.getenv("KEY_PASSWORD")
-            storeFile file("keystore/release.jks")
-            storePassword System.getenv("KEYSTORE_PASSWORD")
-        }
-    }
-
-    buildTypes {
-        release {
-            signingConfig signingConfigs.release
-        }
-        debug {
-            signingConfig signingConfigs.debug
-        }
-    }
-}
-
-flutter {
-    source '../..'
-}
-
-dependencies {
-    implementation(files("libs/tun2socks.aar"))
-    implementation(files("libs/echproxy.aar"))
-    implementation("com.google.code.gson:gson:2.11.0")
-}
-'''
-
-with open('android/app/build.gradle', 'w') as f:
-    f.write(content)
-PYSCRIPT
+        /storeFile file\(keystore\)/ && found { next }
+        { print }
+        ' /tmp/build1.gradle > android/app/build.gradle
         
         echo "✅ build.gradle 已修改为使用环境变量"
+        echo "📝 修改后的 signingConfigs:"
+        sed -n '/signingConfigs {/,/^    }/p' android/app/build.gradle
         
     - name: Build APK (Release)
       run: |
