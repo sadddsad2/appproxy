@@ -87,6 +87,7 @@ flutter {
 }
 
 dependencies {
-    implementation (files("libs/tun2socks.aar"))
+    implementation(files("libs/tun2socks.aar"))
+    implementation(files("libs/echproxy.aar"))  // 添加这一行
     implementation("com.google.code.gson:gson:2.11.0")
 }
