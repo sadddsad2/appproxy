@@ -107,11 +107,6 @@ jobs:
       run: |
         flutter build apk --release --split-per-abi
         
-    - name: Build APK (Debug) 
-      if: github.event_name == 'pull_request'
-      run: |
-        flutter build apk --debug
-        
     - name: Rename APK files
       run: |
         # 获取版本号
