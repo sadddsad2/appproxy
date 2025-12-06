@@ -64,12 +64,10 @@ jobs:
         echo "KEYSTORE_FILE=keystore/release.jks" >> /tmp/signing.properties
         
         # 创建 key.properties 文件
-        cat > android/key.properties <<EOFKEY
-storePassword=$KEYSTORE_PASSWORD
-keyPassword=$KEY_PASSWORD
-keyAlias=release
-storeFile=keystore/release.jks
-EOFKEY
+        echo "storePassword=$KEYSTORE_PASSWORD" > android/key.properties
+        echo "keyPassword=$KEY_PASSWORD" >> android/key.properties
+        echo "keyAlias=release" >> android/key.properties
+        echo "storeFile=keystore/release.jks" >> android/key.properties
         
         echo "✅ Keystore generated successfully"
         echo "KEY_PASSWORD=$KEY_PASSWORD" >> $GITHUB_ENV
@@ -77,36 +75,29 @@ EOFKEY
         
     - name: Update build.gradle for signing
       run: |
-        # 如果 build.gradle 还没有配置签名，自动添加
         if ! grep -q "def keystorePropertiesFile" android/app/build.gradle; then
-          cat > /tmp/signing_config.gradle <<'EOFCONFIG'
-        
-        def keystorePropertiesFile = rootProject.file("key.properties")
-        def keystoreProperties = new Properties()
-        if (keystorePropertiesFile.exists()) {
-            keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-        }
-        EOFCONFIG
+          echo "" >> /tmp/signing_config.gradle
+          echo "def keystorePropertiesFile = rootProject.file(\"key.properties\")" >> /tmp/signing_config.gradle
+          echo "def keystoreProperties = new Properties()" >> /tmp/signing_config.gradle
+          echo "if (keystorePropertiesFile.exists()) {" >> /tmp/signing_config.gradle
+          echo "    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))" >> /tmp/signing_config.gradle
+          echo "}" >> /tmp/signing_config.gradle
           
-          # 在 android { 之前插入
           sed -i '/^android {/r /tmp/signing_config.gradle' android/app/build.gradle
           
-          # 添加 signingConfigs（如果不存在）
           if ! grep -q "signingConfigs {" android/app/build.gradle; then
-            cat > /tmp/signing_configs.gradle <<'EOFSIGNING'
-            signingConfigs {
-                release {
-                    keyAlias keystoreProperties['keyAlias']
-                    keyPassword keystoreProperties['keyPassword']
-                    storeFile file(keystoreProperties['storeFile'])
-                    storePassword keystoreProperties['storePassword']
-                }
-            }
-        EOFSIGNING
+            echo "    signingConfigs {" > /tmp/signing_configs.gradle
+            echo "        release {" >> /tmp/signing_configs.gradle
+            echo "            keyAlias keystoreProperties['keyAlias']" >> /tmp/signing_configs.gradle
+            echo "            keyPassword keystoreProperties['keyPassword']" >> /tmp/signing_configs.gradle
+            echo "            storeFile file(keystoreProperties['storeFile'])" >> /tmp/signing_configs.gradle
+            echo "            storePassword keystoreProperties['storePassword']" >> /tmp/signing_configs.gradle
+            echo "        }" >> /tmp/signing_configs.gradle
+            echo "    }" >> /tmp/signing_configs.gradle
+            
             sed -i '/^android {$/r /tmp/signing_configs.gradle' android/app/build.gradle
           fi
           
-          # 确保 release buildType 使用签名配置
           if ! grep -q "signingConfig signingConfigs.release" android/app/build.gradle; then
             sed -i '/release {$/a\            signingConfig signingConfigs.release' android/app/build.gradle
           fi
