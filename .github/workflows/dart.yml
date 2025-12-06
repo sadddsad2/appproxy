@@ -105,10 +105,8 @@ EOFINFO
         
     - name: Modify build.gradle to remove local.properties dependency
       run: |
-        cp android/app/build.gradle android/app/build.gradle.bak
-        
-        cat > android/app/build.gradle << 'EOF'
-plugins {
+        python3 << 'PYSCRIPT'
+content = '''plugins {
     id "com.android.application"
     id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
@@ -193,7 +191,11 @@ dependencies {
     implementation(files("libs/echproxy.aar"))
     implementation("com.google.code.gson:gson:2.11.0")
 }
-EOF
+'''
+
+with open('android/app/build.gradle', 'w') as f:
+    f.write(content)
+PYSCRIPT
         
         echo "✅ build.gradle 已修改为使用环境变量"
         
