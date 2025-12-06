@@ -105,7 +105,9 @@ EOFINFO
         
     - name: Modify build.gradle to remove local.properties dependency
       run: |
-        cat > android/app/build.gradle <<'EOFGRADLE'
+        cp android/app/build.gradle android/app/build.gradle.bak
+        
+        cat > android/app/build.gradle << 'EOF'
 plugins {
     id "com.android.application"
     id "kotlin-android"
@@ -191,7 +193,7 @@ dependencies {
     implementation(files("libs/echproxy.aar"))
     implementation("com.google.code.gson:gson:2.11.0")
 }
-EOFGRADLE
+EOF
         
         echo "✅ build.gradle 已修改为使用环境变量"
         
