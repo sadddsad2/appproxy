@@ -68,11 +68,11 @@ jobs:
         else
           echo "📝 Creating l10n.yaml..."
           cat > l10n.yaml << 'EOFCONFIG'
-        arb-dir: lib/l10n
-        template-arb-file: app_en.arb
-        output-localization-file: l10n.dart
-        output-class: S
-        EOFCONFIG
+arb-dir: lib/l10n
+template-arb-file: app_en.arb
+output-localization-file: l10n.dart
+output-class: S
+EOFCONFIG
           echo "✅ Created l10n.yaml"
           ARB_DIR="lib/l10n"
           TEMPLATE_FILE="app_en.arb"
@@ -119,18 +119,18 @@ jobs:
           echo ""
           echo "📝 Creating template file: $TEMPLATE_FILE"
           cat > "$ARB_DIR/$TEMPLATE_FILE" << 'EOFENGLISH'
-        {
-          "@@locale": "en",
-          "text_proxy": "Proxy",
-          "text_update_tips": "Update Tips",
-          "text_current_version": "Current Version",
-          "text_latest_version": "Latest Version",
-          "text_update_content": "Update Content",
-          "text_cancel": "Cancel",
-          "text_download": "Download",
-          "text_current_latest": "Already the latest version"
-        }
-        EOFENGLISH
+{
+  "@@locale": "en",
+  "text_proxy": "Proxy",
+  "text_update_tips": "Update Tips",
+  "text_current_version": "Current Version",
+  "text_latest_version": "Latest Version",
+  "text_update_content": "Update Content",
+  "text_cancel": "Cancel",
+  "text_download": "Download",
+  "text_current_latest": "Already the latest version"
+}
+EOFENGLISH
           echo "✅ Template created"
         fi
         
