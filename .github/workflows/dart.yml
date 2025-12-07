@@ -59,10 +59,10 @@ jobs:
           echo "🔐 首次运行 - 生成新密码"
           echo ""
           echo "⚠️  重要: 请保存以下密码并手动添加到 GitHub Secrets!"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "================================================"
           echo "KEY_PASSWORD=$KEY_PASSWORD"
           echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "================================================"
           echo ""
           echo "📝 添加步骤:"
           echo "1. 进入仓库 Settings -> Secrets and variables -> Actions"
@@ -97,37 +97,33 @@ jobs:
         
         # 保存密码信息到文件（备份用）
         mkdir -p output
-        cat > output/KEYSTORE_INFO.txt <<EOF
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-AppProxy Release Keystore Information
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-⚠️  请妥善保管此文件和 keystore 文件！
-
-Keystore File: release.jks
-KEY_ALIAS: release
-KEY_PASSWORD: $KEY_PASSWORD
-KEYSTORE_PASSWORD: $KEYSTORE_PASSWORD
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-如何添加到 GitHub Secrets:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-1. 进入仓库的 Settings
-2. 点击 Secrets and variables -> Actions
-3. 点击 New repository secret
-4. 添加以下 secrets:
-   - Name: KEY_PASSWORD
-     Value: $KEY_PASSWORD
-
-   - Name: KEYSTORE_PASSWORD
-     Value: $KEYSTORE_PASSWORD
-
-5. 将 release.jks 文件保存到安全位置
-
-后续构建时，workflow 会从 Secrets 读取这些密码。
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-EOF
+        cat > output/KEYSTORE_INFO.txt << 'ENDOFFILE'
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        AppProxy Release Keystore Information
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        
+        请妥善保管此文件和 keystore 文件！
+        
+        Keystore File: release.jks
+        KEY_ALIAS: release
+        ENDOFFILE
+        echo "KEY_PASSWORD: $KEY_PASSWORD" >> output/KEYSTORE_INFO.txt
+        echo "KEYSTORE_PASSWORD: $KEYSTORE_PASSWORD" >> output/KEYSTORE_INFO.txt
+        cat >> output/KEYSTORE_INFO.txt << 'ENDOFFILE'
+        
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        如何添加到 GitHub Secrets:
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        
+        1. 进入仓库的 Settings
+        2. 点击 Secrets and variables -> Actions
+        3. 点击 New repository secret
+        4. 添加以下 secrets (密码见上方)
+        5. 将 release.jks 文件保存到安全位置
+        
+        后续构建时，workflow 会从 Secrets 读取这些密码。
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        ENDOFFILE
       
     - name: Modify build.gradle to use environment variables
       run: |
@@ -234,52 +230,32 @@ EOF
           output/*.apk
           output/*.sha256
         body: |
-          ## 🎉 AppProxy ${{ env.VERSION }}
+          ## AppProxy ${{ env.VERSION }}
           
-          ### 📱 下载说明
+          ### Download Instructions
           
-          | 架构 | 适用设备 | 推荐度 |
-          |------|---------|--------|
-          | **arm64-v8a** | 64位 ARM 设备 | ⭐⭐⭐⭐⭐ 推荐 |
-          | armeabi-v7a | 32位 ARM 设备 | ⭐⭐⭐ 旧设备 |
-          | x86_64 | 64位 x86 设备 | ⭐⭐ 模拟器 |
-          | universal | 通用版本 | ⭐ 体积大 |
+          | Architecture | Device Type | Recommended |
+          |--------------|-------------|-------------|
+          | **arm64-v8a** | 64-bit ARM | ⭐⭐⭐⭐⭐ |
+          | armeabi-v7a | 32-bit ARM | ⭐⭐⭐ |
+          | x86_64 | 64-bit x86 | ⭐⭐ |
+          | universal | All devices | ⭐ |
           
-          > 💡 **不知道选哪个？** 大部分现代手机（2016年后）选择 **arm64-v8a** 版本
+          > Most modern phones (2016+) should use **arm64-v8a**
           
-          ### 🔐 安全校验
+          ### Security Verification
           
-          每个 APK 都附带 `.sha256` 文件用于验证完整性：
+          Verify integrity with SHA256:
           
           ```bash
-          # 下载后验证
           sha256sum -c appproxy-v${{ env.VERSION }}-arm64-v8a-release.apk.sha256
           ```
           
-          ### 📋 更新内容
+          ### Build Information
           
-          ${{ github.event.head_commit.message }}
-          
-          ### ℹ️ 构建信息
-          
-          - **构建时间**: ${{ github.event.head_commit.timestamp }}
-          - **提交者**: ${{ github.event.head_commit.author.name }}
-          - **Commit**: `${{ github.sha }}`
-          
-          ---
-          
-          ### 🚀 快速开始
-          
-          1. 根据设备选择对应的 APK 下载
-          2. 安装到 Android 设备
-          3. 授予 VPN 权限
-          4. 添加 Workers 配置
-          5. 选择需要代理的应用
-          6. 启动 VPN
-          
-          ### 📖 完整文档
-          
-          查看 [README.md](https://github.com/${{ github.repository }}) 了解详细使用说明。
+          - **Build Time**: ${{ github.event.head_commit.timestamp }}
+          - **Commit**: ${{ github.event.head_commit.author.name }}
+          - **SHA**: ${{ github.sha }}
           
         draft: false
         prerelease: false
@@ -289,39 +265,40 @@ EOF
     - name: Build Summary
       if: always()
       run: |
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "           构建结果汇总"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "================================================"
+        echo "               BUILD SUMMARY"
+        echo "================================================"
         
         if [ "${{ job.status }}" == "success" ]; then
           echo ""
-          echo "✅ 构建成功！"
+          echo "✅ Build Successful!"
           echo ""
-          echo "📦 生成的文件:"
-          ls -1 output/*.apk 2>/dev/null || echo "  未找到 APK 文件"
+          echo "📦 Generated Files:"
+          ls -1 output/*.apk 2>/dev/null || echo "  No APK files found"
           echo ""
-          echo "🔑 签名密钥信息:"
-          echo "  - 密钥文件已保存到 Artifacts"
-          echo "  - 密钥信息已保存到 KEYSTORE_INFO.txt"
+          echo "🔑 Keystore Information:"
+          echo "  - Keystore saved to Artifacts"
+          echo "  - Info saved to KEYSTORE_INFO.txt"
           echo ""
-          echo "📥 下载方式:"
-          echo "  1. Actions 页面 -> 选择此次运行"
-          echo "  2. 滚动到底部 Artifacts 区域"
-          echo "  3. 下载 apk-files.zip"
+          echo "📥 Download Instructions:"
+          echo "  1. Go to Actions -> Select this run"
+          echo "  2. Scroll to Artifacts section"
+          echo "  3. Download apk-files.zip"
           echo ""
           if [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
-            echo "⚠️  重要提醒:"
-            echo "  首次构建已生成密钥！"
-            echo "  请立即下载 keystore-info 并添加密码到 Secrets"
-            echo "  否则下次构建会生成新的密钥，导致签名不一致！"
+            echo "⚠️  IMPORTANT REMINDER:"
+            echo "  First build completed with new keystore!"
+            echo "  Please download keystore-info immediately"
+            echo "  and add passwords to Secrets"
+            echo "  Otherwise next build will generate new keys!"
           fi
           echo ""
         else
           echo ""
-          echo "❌ 构建失败"
+          echo "❌ Build Failed"
           echo ""
-          echo "请检查构建日志查看详细错误信息"
+          echo "Please check build logs for details"
           echo ""
         fi
         
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "================================================"
