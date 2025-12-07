@@ -63,12 +63,12 @@ jobs:
         # 创建 l10n.yaml 配置文件
         if [ ! -f "l10n.yaml" ]; then
           echo "📝 Creating l10n.yaml..."
-          cat > l10n.yaml << 'EOF'
-arb-dir: lib/l10n
-template-arb-file: app_en.arb
-output-localization-file: l10n.dart
-output-class: S
-EOF
+          cat > l10n.yaml << 'EOFCONFIG'
+        arb-dir: lib/l10n
+        template-arb-file: app_en.arb
+        output-localization-file: l10n.dart
+        output-class: S
+        EOFCONFIG
           echo "✅ Created l10n.yaml"
         else
           echo "✅ l10n.yaml already exists"
@@ -79,19 +79,19 @@ EOF
         
         if [ ! -f "lib/l10n/app_en.arb" ]; then
           echo "📝 Creating default ARB file..."
-          cat > lib/l10n/app_en.arb << 'EOF'
-{
-  "@@locale": "en",
-  "text_proxy": "Proxy",
-  "text_update_tips": "Update Tips",
-  "text_current_version": "Current Version",
-  "text_latest_version": "Latest Version",
-  "text_update_content": "Update Content",
-  "text_cancel": "Cancel",
-  "text_download": "Download",
-  "text_current_latest": "Already the latest version"
-}
-EOF
+          cat > lib/l10n/app_en.arb << 'EOFENGLISH'
+        {
+          "@@locale": "en",
+          "text_proxy": "Proxy",
+          "text_update_tips": "Update Tips",
+          "text_current_version": "Current Version",
+          "text_latest_version": "Latest Version",
+          "text_update_content": "Update Content",
+          "text_cancel": "Cancel",
+          "text_download": "Download",
+          "text_current_latest": "Already the latest version"
+        }
+        EOFENGLISH
           echo "✅ Created app_en.arb with default strings"
         else
           echo "✅ app_en.arb already exists"
@@ -100,19 +100,19 @@ EOF
         # 如果需要中文,创建 app_zh.arb
         if [ ! -f "lib/l10n/app_zh.arb" ]; then
           echo "📝 Creating Chinese ARB file..."
-          cat > lib/l10n/app_zh.arb << 'EOF'
-{
-  "@@locale": "zh",
-  "text_proxy": "代理",
-  "text_update_tips": "更新提示",
-  "text_current_version": "当前版本",
-  "text_latest_version": "最新版本",
-  "text_update_content": "更新内容",
-  "text_cancel": "取消",
-  "text_download": "下载",
-  "text_current_latest": "已是最新版本"
-}
-EOF
+          cat > lib/l10n/app_zh.arb << 'EOFCHINESE'
+        {
+          "@@locale": "zh",
+          "text_proxy": "代理",
+          "text_update_tips": "更新提示",
+          "text_current_version": "当前版本",
+          "text_latest_version": "最新版本",
+          "text_update_content": "更新内容",
+          "text_cancel": "取消",
+          "text_download": "下载",
+          "text_current_latest": "已是最新版本"
+        }
+        EOFCHINESE
           echo "✅ Created app_zh.arb"
         else
           echo "✅ app_zh.arb already exists"
