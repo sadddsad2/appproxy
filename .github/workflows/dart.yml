@@ -38,13 +38,53 @@ jobs:
       
     - name: Generate localization files
       run: |
-        # 检查是否有国际化配置
+        echo "🌍 Checking for internationalization configuration..."
+        
+        # Check if l10n.yaml exists or generate is enabled in pubspec.yaml
         if [ -f "l10n.yaml" ] || grep -q "generate: true" pubspec.yaml; then
-          echo "📝 生成国际化文件..."
-          flutter gen-l10n || echo "⚠️  国际化生成失败，继续构建"
+          echo "📝 Generating localization files..."
+          
+          # Generate localization files
+          flutter gen-l10n
+          
+          # Verify the files were created
+          if [ -f "lib/generated/l10n.dart" ]; then
+            echo "✅ Localization files generated successfully"
+          else
+            echo "❌ Error: Localization files were not generated"
+            echo "This is required for the build. Please check your l10n configuration."
+            exit 1
+          fi
         else
-          echo "ℹ️  未检测到国际化配置，跳过"
+          echo "ℹ️  No internationalization configuration detected"
+          echo "⚠️  Warning: Your code imports 'generated/l10n.dart' but no l10n config found"
+          echo ""
+          echo "To fix this, add one of the following to your pubspec.yaml:"
+          echo ""
+          echo "Option 1 - Add to pubspec.yaml:"
+          echo "flutter:"
+          echo "  generate: true"
+          echo ""
+          echo "Then create l10n.yaml in your project root:"
+          echo "arb-dir: lib/l10n"
+          echo "template-arb-file: app_en.arb"
+          echo "output-localization-file: l10n.dart"
+          echo ""
+          exit 1
         fi
+      
+    - name: Verify build requirements
+      run: |
+        echo "🔍 Verifying all required files exist..."
+        
+        # Check for generated localization files
+        if [ ! -f "lib/generated/l10n.dart" ]; then
+          echo "❌ Missing: lib/generated/l10n.dart"
+          echo "Localization files are required but were not generated."
+          exit 1
+        fi
+        
+        echo "✅ All required files present"
       
     - name: Generate signing keystore
       run: |
