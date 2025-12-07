@@ -60,8 +60,62 @@ jobs:
           echo "✅ generate: true already exists in pubspec.yaml"
         fi
         
-        # 创建 l10n.yaml 配置文件
-        if [ ! -f "l10n.yaml" ]; then
+        # 创建 l10n 目录
+        mkdir -p lib/l10n
+        
+        # 检查是否存在 l10n.yaml
+        if [ -f "l10n.yaml" ]; then
+          echo "📄 Found existing l10n.yaml"
+          cat l10n.yaml
+          
+          # 读取配置
+          ARB_DIR=$(grep "arb-dir:" l10n.yaml | sed 's/arb-dir: *//' | tr -d ' ')
+          TEMPLATE_FILE=$(grep "template-arb-file:" l10n.yaml | sed 's/template-arb-file: *//' | tr -d ' ')
+          
+          echo ""
+          echo "📂 ARB directory: $ARB_DIR"
+          echo "📝 Template file: $TEMPLATE_FILE"
+          
+          # 检查 ARB 目录中的文件
+          if [ -d "$ARB_DIR" ]; then
+            echo ""
+            echo "📋 Existing ARB files in $ARB_DIR:"
+            ls -la "$ARB_DIR"/*.arb 2>/dev/null || echo "  No ARB files found"
+            
+            # 检查是否有重复的 locale
+            echo ""
+            echo "🔍 Checking for duplicate locales..."
+            for arbfile in "$ARB_DIR"/*.arb; do
+              if [ -f "$arbfile" ]; then
+                locale=$(grep -o '"@@locale"[[:space:]]*:[[:space:]]*"[^"]*"' "$arbfile" | sed 's/.*"@@locale"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+                echo "  $(basename $arbfile) -> locale: $locale"
+              fi
+            done
+            
+            # 查找重复的 locale
+            duplicates=$(for arbfile in "$ARB_DIR"/*.arb; do
+              if [ -f "$arbfile" ]; then
+                grep -o '"@@locale"[[:space:]]*:[[:space:]]*"[^"]*"' "$arbfile" | sed 's/.*"@@locale"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
+              fi
+            done | sort | uniq -d)
+            
+            if [ ! -z "$duplicates" ]; then
+              echo ""
+              echo "⚠️  Found duplicate locales: $duplicates"
+              echo "🔧 Cleaning up duplicate ARB files..."
+              
+              # 只保留模板文件
+              for arbfile in "$ARB_DIR"/*.arb; do
+                if [ -f "$arbfile" ] && [ "$(basename $arbfile)" != "$TEMPLATE_FILE" ]; then
+                  echo "  Removing: $(basename $arbfile)"
+                  rm "$arbfile"
+                fi
+              done
+              
+              echo "✅ Cleanup completed"
+            fi
+          fi
+        else
           echo "📝 Creating l10n.yaml..."
           cat > l10n.yaml << 'EOFCONFIG'
         arb-dir: lib/l10n
@@ -70,16 +124,14 @@ jobs:
         output-class: S
         EOFCONFIG
           echo "✅ Created l10n.yaml"
-        else
-          echo "✅ l10n.yaml already exists"
+          ARB_DIR="lib/l10n"
+          TEMPLATE_FILE="app_en.arb"
         fi
         
-        # 创建 l10n 目录和基础 ARB 文件
-        mkdir -p lib/l10n
-        
-        if [ ! -f "lib/l10n/app_en.arb" ]; then
-          echo "📝 Creating default ARB file..."
-          cat > lib/l10n/app_en.arb << 'EOFENGLISH'
+        # 确保至少有一个模板 ARB 文件
+        if [ ! -f "$ARB_DIR/$TEMPLATE_FILE" ]; then
+          echo "📝 Creating template ARB file: $TEMPLATE_FILE..."
+          cat > "$ARB_DIR/$TEMPLATE_FILE" << 'EOFENGLISH'
         {
           "@@locale": "en",
           "text_proxy": "Proxy",
@@ -92,38 +144,14 @@ jobs:
           "text_current_latest": "Already the latest version"
         }
         EOFENGLISH
-          echo "✅ Created app_en.arb with default strings"
+          echo "✅ Created $TEMPLATE_FILE"
         else
-          echo "✅ app_en.arb already exists"
-        fi
-        
-        # 如果需要中文,创建 app_zh.arb
-        if [ ! -f "lib/l10n/app_zh.arb" ]; then
-          echo "📝 Creating Chinese ARB file..."
-          cat > lib/l10n/app_zh.arb << 'EOFCHINESE'
-        {
-          "@@locale": "zh",
-          "text_proxy": "代理",
-          "text_update_tips": "更新提示",
-          "text_current_version": "当前版本",
-          "text_latest_version": "最新版本",
-          "text_update_content": "更新内容",
-          "text_cancel": "取消",
-          "text_download": "下载",
-          "text_current_latest": "已是最新版本"
-        }
-        EOFCHINESE
-          echo "✅ Created app_zh.arb"
-        else
-          echo "✅ app_zh.arb already exists"
+          echo "✅ Template file $TEMPLATE_FILE already exists"
         fi
         
         echo ""
-        echo "📋 Configuration summary:"
-        echo "  - pubspec.yaml: generate: true ✓"
-        echo "  - l10n.yaml: configured ✓"
-        echo "  - lib/l10n/app_en.arb: created ✓"
-        echo "  - lib/l10n/app_zh.arb: created ✓"
+        echo "📋 Final ARB files:"
+        ls -la "$ARB_DIR"/*.arb 2>/dev/null || echo "  No ARB files found"
         echo ""
       
     - name: Generate localization files
