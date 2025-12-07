@@ -36,146 +36,12 @@ jobs:
     - name: Get Flutter dependencies
       run: flutter pub get
       
-    - name: Clean and setup internationalization
-      run: |
-        echo "🌍 Setting up internationalization..."
-        
-        if ! grep -q "generate: true" pubspec.yaml; then
-          echo "📝 Adding generate: true to pubspec.yaml..."
-          if grep -q "^flutter:" pubspec.yaml; then
-            sed -i '/^flutter:/a\  generate: true' pubspec.yaml
-          else
-            echo "" >> pubspec.yaml
-            echo "flutter:" >> pubspec.yaml
-            echo "  generate: true" >> pubspec.yaml
-          fi
-          echo "✅ Added generate: true"
-        else
-          echo "✅ generate: true exists"
-        fi
-        
-        if [ -f "l10n.yaml" ]; then
-          echo "📄 Found existing l10n.yaml"
-          cat l10n.yaml
-          ARB_DIR=$(grep "arb-dir:" l10n.yaml | sed 's/.*arb-dir:[[:space:]]*//' | awk '{print $1}')
-          TEMPLATE_FILE=$(grep "template-arb-file:" l10n.yaml | sed 's/.*template-arb-file:[[:space:]]*//' | awk '{print $1}')
-        else
-          echo "📝 Creating l10n.yaml..."
-          echo 'arb-dir: lib/l10n' > l10n.yaml
-          echo 'template-arb-file: app_en.arb' >> l10n.yaml
-          echo 'output-localization-file: l10n.dart' >> l10n.yaml
-          echo 'output-class: S' >> l10n.yaml
-          echo "✅ Created l10n.yaml"
-          ARB_DIR="lib/l10n"
-          TEMPLATE_FILE="app_en.arb"
-        fi
-        
-        echo ""
-        echo "📂 ARB directory: $ARB_DIR"
-        echo "📝 Template file: $TEMPLATE_FILE"
-        
-        mkdir -p "$ARB_DIR"
-        
-        echo ""
-        echo "📋 Existing files:"
-        if ls "$ARB_DIR"/*.arb 1> /dev/null 2>&1; then
-          for arbfile in "$ARB_DIR"/*.arb; do
-            if [ -f "$arbfile" ]; then
-              filename=$(basename "$arbfile")
-              locale=$(grep '"@@locale"' "$arbfile" | head -1 | sed 's/.*"@@locale"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-              echo "  📄 $filename (locale: $locale)"
-            fi
-          done
-          
-          echo ""
-          echo "🧹 Cleaning: keeping only template..."
-          for arbfile in "$ARB_DIR"/*.arb; do
-            filename=$(basename "$arbfile")
-            if [ "$filename" != "$TEMPLATE_FILE" ]; then
-              echo "  ❌ Removing: $filename"
-              rm -f "$arbfile"
-            else
-              echo "  ✅ Keeping: $filename"
-            fi
-          done
-        else
-          echo "  (no files found)"
-        fi
-        
-        if [ ! -f "$ARB_DIR/$TEMPLATE_FILE" ]; then
-          echo ""
-          echo "📝 Creating template: $TEMPLATE_FILE"
-          echo '{' > "$ARB_DIR/$TEMPLATE_FILE"
-          echo '  "@@locale": "en",' >> "$ARB_DIR/$TEMPLATE_FILE"
-          echo '  "text_proxy": "Proxy",' >> "$ARB_DIR/$TEMPLATE_FILE"
-          echo '  "text_update_tips": "Update Tips",' >> "$ARB_DIR/$TEMPLATE_FILE"
-          echo '  "text_current_version": "Current Version",' >> "$ARB_DIR/$TEMPLATE_FILE"
-          echo '  "text_latest_version": "Latest Version",' >> "$ARB_DIR/$TEMPLATE_FILE"
-          echo '  "text_update_content": "Update Content",' >> "$ARB_DIR/$TEMPLATE_FILE"
-          echo '  "text_cancel": "Cancel",' >> "$ARB_DIR/$TEMPLATE_FILE"
-          echo '  "text_download": "Download",' >> "$ARB_DIR/$TEMPLATE_FILE"
-          echo '  "text_current_latest": "Already the latest version"' >> "$ARB_DIR/$TEMPLATE_FILE"
-          echo '}' >> "$ARB_DIR/$TEMPLATE_FILE"
-          echo "✅ Template created"
-        fi
-        
-        echo ""
-        echo "✅ Final state:"
-        for arbfile in "$ARB_DIR"/*.arb; do
-          if [ -f "$arbfile" ]; then
-            filename=$(basename "$arbfile")
-            locale=$(grep '"@@locale"' "$arbfile" | head -1 | sed 's/.*"@@locale"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-            echo "  ✓ $filename -> locale: $locale"
-          fi
-        done
-        echo ""
-      
-    - name: Generate localization files
-      run: |
-        echo "🔄 Generating localization files..."
-        echo ""
-        
-        echo "📋 Current configuration:"
-        if [ -f "l10n.yaml" ]; then
-          cat l10n.yaml
-        fi
-        
-        echo ""
-        echo "📂 ARB files:"
-        find lib/l10n -name "*.arb" -exec echo "  {}" \; -exec cat {} \; 2>/dev/null || echo "  No ARB files found"
-        
-        echo ""
-        echo "🔄 Running flutter gen-l10n..."
-        
-        if flutter gen-l10n 2>&1; then
-          echo ""
-          echo "✅ Command completed"
-        else
-          echo ""
-          echo "❌ Command failed with exit code $?"
-        fi
-        
-        echo ""
-        echo "🔍 Checking generated files..."
-        if [ -f "lib/generated/l10n.dart" ]; then
-          echo "✅ lib/generated/l10n.dart exists"
-          echo "📄 File size: $(wc -c < lib/generated/l10n.dart) bytes"
-        else
-          echo "❌ lib/generated/l10n.dart NOT found"
-          echo ""
-          echo "📂 Contents of lib/generated/:"
-          ls -la lib/generated/ 2>/dev/null || echo "  Directory does not exist"
-          echo ""
-          echo "❌ Localization generation failed"
-          exit 1
-        fi
-        
-        echo "✅ Localization files generated successfully"
-      
     - name: Generate signing keystore
       run: |
+        # 创建密钥存储目录
         mkdir -p android/app/keystore
         
+        # 生成随机密码（如果没有在 Secrets 中设置）
         if [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
           KEY_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
           KEYSTORE_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
@@ -183,10 +49,10 @@ jobs:
           echo "🔐 首次运行 - 生成新密码"
           echo ""
           echo "⚠️  重要: 请保存以下密码并手动添加到 GitHub Secrets!"
-          echo "================================================"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "KEY_PASSWORD=$KEY_PASSWORD"
           echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
-          echo "================================================"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo ""
           echo "📝 添加步骤:"
           echo "1. 进入仓库 Settings -> Secrets and variables -> Actions"
@@ -194,12 +60,16 @@ jobs:
           echo "3. 添加 KEY_PASSWORD (值见上方)"
           echo "4. 添加 KEYSTORE_PASSWORD (值见上方)"
           echo ""
+          echo "💡 提示: 密码信息也会保存在 Artifacts 中供下载"
+          echo ""
         else
           KEY_PASSWORD="${{ secrets.KEY_PASSWORD }}"
           KEYSTORE_PASSWORD="${{ secrets.KEYSTORE_PASSWORD }}"
+          
           echo "✅ 使用已保存的密码"
         fi
         
+        # 生成密钥库
         keytool -genkey -v \
           -keystore android/app/keystore/release.jks \
           -keyalg RSA \
@@ -215,66 +85,74 @@ jobs:
         echo "KEY_PASSWORD=$KEY_PASSWORD" >> $GITHUB_ENV
         echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
         
+        # 保存密码信息到文件（备份用）
         mkdir -p output
-        echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' > output/KEYSTORE_INFO.txt
-        echo 'AppProxy Release Keystore Information' >> output/KEYSTORE_INFO.txt
-        echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' >> output/KEYSTORE_INFO.txt
-        echo '' >> output/KEYSTORE_INFO.txt
-        echo '请妥善保管此文件和 keystore 文件!' >> output/KEYSTORE_INFO.txt
-        echo '' >> output/KEYSTORE_INFO.txt
-        echo 'Keystore File: release.jks' >> output/KEYSTORE_INFO.txt
-        echo 'KEY_ALIAS: release' >> output/KEYSTORE_INFO.txt
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" > output/KEYSTORE_INFO.txt
+        echo "AppProxy Release Keystore Information" >> output/KEYSTORE_INFO.txt
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> output/KEYSTORE_INFO.txt
+        echo "" >> output/KEYSTORE_INFO.txt
+        echo "⚠️  请妥善保管此文件和 keystore 文件！" >> output/KEYSTORE_INFO.txt
+        echo "" >> output/KEYSTORE_INFO.txt
+        echo "Keystore File: release.jks" >> output/KEYSTORE_INFO.txt
+        echo "KEY_ALIAS: release" >> output/KEYSTORE_INFO.txt
         echo "KEY_PASSWORD: $KEY_PASSWORD" >> output/KEYSTORE_INFO.txt
         echo "KEYSTORE_PASSWORD: $KEYSTORE_PASSWORD" >> output/KEYSTORE_INFO.txt
-        echo '' >> output/KEYSTORE_INFO.txt
-        echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' >> output/KEYSTORE_INFO.txt
-        echo '如何添加到 GitHub Secrets:' >> output/KEYSTORE_INFO.txt
-        echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' >> output/KEYSTORE_INFO.txt
-        echo '' >> output/KEYSTORE_INFO.txt
-        echo '1. 进入仓库的 Settings' >> output/KEYSTORE_INFO.txt
-        echo '2. 点击 Secrets and variables -> Actions' >> output/KEYSTORE_INFO.txt
-        echo '3. 点击 New repository secret' >> output/KEYSTORE_INFO.txt
-        echo '4. 添加以下 secrets (密码见上方)' >> output/KEYSTORE_INFO.txt
-        echo '5. 将 release.jks 文件保存到安全位置' >> output/KEYSTORE_INFO.txt
-        echo '' >> output/KEYSTORE_INFO.txt
-        echo '后续构建时,workflow 会从 Secrets 读取这些密码。' >> output/KEYSTORE_INFO.txt
-        echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' >> output/KEYSTORE_INFO.txt
-      
-    - name: Modify build.gradle to use environment variables
+        echo "" >> output/KEYSTORE_INFO.txt
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> output/KEYSTORE_INFO.txt
+        echo "如何添加到 GitHub Secrets:" >> output/KEYSTORE_INFO.txt
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> output/KEYSTORE_INFO.txt
+        echo "" >> output/KEYSTORE_INFO.txt
+        echo "1. 进入仓库的 Settings" >> output/KEYSTORE_INFO.txt
+        echo "2. 点击 Secrets and variables -> Actions" >> output/KEYSTORE_INFO.txt
+        echo "3. 点击 New repository secret" >> output/KEYSTORE_INFO.txt
+        echo "4. 添加以下 secrets:" >> output/KEYSTORE_INFO.txt
+        echo "   - Name: KEY_PASSWORD" >> output/KEYSTORE_INFO.txt
+        echo "     Value: $KEY_PASSWORD" >> output/KEYSTORE_INFO.txt
+        echo "" >> output/KEYSTORE_INFO.txt
+        echo "   - Name: KEYSTORE_PASSWORD" >> output/KEYSTORE_INFO.txt
+        echo "     Value: $KEYSTORE_PASSWORD" >> output/KEYSTORE_INFO.txt
+        echo "" >> output/KEYSTORE_INFO.txt
+        echo "5. 将 release.jks 文件保存到安全位置" >> output/KEYSTORE_INFO.txt
+        echo "" >> output/KEYSTORE_INFO.txt
+        echo "后续构建时，workflow 会从 Secrets 读取这些密码。" >> output/KEYSTORE_INFO.txt
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> output/KEYSTORE_INFO.txt
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Modify build.gradle to remove local.properties dependency
       run: |
         cp android/app/build.gradle android/app/build.gradle.bak
         sed -i '/def keystore = localProperties.getProperty/,/}/d' android/app/build.gradle
         sed -i 's|storeFile file(keystore)|storeFile file("keystore/release.jks")|g' android/app/build.gradle
+        sed -i 's|keyAlias System.getenv("KEY_ALIAS")|keyAlias System.getenv("KEY_ALIAS")|g' android/app/build.gradle
+        sed -i 's|keyPassword System.getenv("KEY_PASSWORD")|keyPassword System.getenv("KEY_PASSWORD")|g' android/app/build.gradle
+        sed -i 's|storePassword System.getenv("KEYSTORE_PASSWORD")|storePassword System.getenv("KEYSTORE_PASSWORD")|g' android/app/build.gradle
         echo "✅ build.gradle modified successfully"
         
     - name: Build APK (Release)
       run: |
-        echo "🔨 开始构建 APK..."
         flutter build apk --release --split-per-abi
-        echo "✅ APK 构建完成"
         
     - name: Rename APK files
       run: |
+        # 获取版本号
         VERSION=$(grep "version:" pubspec.yaml | sed 's/version: //' | tr -d ' ')
+        
+        # 创建输出目录
         mkdir -p output
         
-        echo "📦 重命名 APK 文件 (版本: $VERSION)..."
-        
+        # 重命名文件
         for file in build/app/outputs/flutter-apk/*.apk; do
           if [ -f "$file" ]; then
             filename=$(basename "$file")
             if [[ $filename == *"arm64-v8a"* ]]; then
               cp "$file" "output/appproxy-v${VERSION}-arm64-v8a-release.apk"
-              echo "  ✓ arm64-v8a"
             elif [[ $filename == *"armeabi-v7a"* ]]; then
               cp "$file" "output/appproxy-v${VERSION}-armeabi-v7a-release.apk"
-              echo "  ✓ armeabi-v7a"
             elif [[ $filename == *"x86_64"* ]]; then
               cp "$file" "output/appproxy-v${VERSION}-x86_64-release.apk"
-              echo "  ✓ x86_64"
             else
               cp "$file" "output/appproxy-v${VERSION}-universal-release.apk"
-              echo "  ✓ universal"
             fi
           fi
         done
@@ -283,22 +161,13 @@ jobs:
         
     - name: Generate SHA256 checksums
       run: |
-        echo "🔐 生成 SHA256 校验和..."
         cd output
         for file in *.apk; do
-          if [ -f "$file" ]; then
-            sha256sum "$file" > "$file.sha256"
-            echo "  ✓ $file.sha256"
-          fi
+          sha256sum "$file" > "$file.sha256"
         done
         cd ..
         
-    - name: List output files
-      run: |
-        echo "📋 输出文件列表:"
-        ls -lh output/
-        
-    - name: Upload APK artifacts
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: apk-files
@@ -312,7 +181,7 @@ jobs:
         path: output/*.sha256
         retention-days: 30
         
-    - name: Upload keystore (first time)
+    - name: Save keystore (first time only)
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
       uses: actions/upload-artifact@v4
       with:
@@ -337,73 +206,31 @@ jobs:
         body: |
           ## AppProxy ${{ env.VERSION }}
           
-          ### Download Instructions
+          ### 下载说明
+          - `arm64-v8a`: 适用于 64位 ARM 设备（推荐，大部分现代手机）
+          - `armeabi-v7a`: 适用于 32位 ARM 设备（旧设备）
+          - `x86_64`: 适用于 64位 x86 设备（模拟器）
+          - `universal`: 通用版本（包含所有架构，体积较大）
           
-          | Architecture | Device Type | Recommended |
-          |--------------|-------------|-------------|
-          | **arm64-v8a** | 64-bit ARM | ⭐⭐⭐⭐⭐ |
-          | armeabi-v7a | 32-bit ARM | ⭐⭐⭐ |
-          | x86_64 | 64-bit x86 | ⭐⭐ |
-          | universal | All devices | ⭐ |
+          ### SHA256 校验
+          每个 APK 都附带 `.sha256` 文件，可用于验证完整性。
           
-          > Most modern phones (2016+) should use **arm64-v8a**
-          
-          ### Security Verification
-          
-          Verify integrity with SHA256:
-          
-          ```bash
-          sha256sum -c appproxy-v${{ env.VERSION }}-arm64-v8a-release.apk.sha256
-          ```
-          
-          ### Build Information
-          
-          - **Build Time**: ${{ github.event.head_commit.timestamp }}
-          - **Commit**: ${{ github.event.head_commit.author.name }}
-          - **SHA**: ${{ github.sha }}
-          
+          ### 自动构建信息
+          - 构建时间: ${{ github.event.head_commit.timestamp }}
+          - 提交信息: ${{ github.event.head_commit.message }}
+          - 提交者: ${{ github.event.head_commit.author.name }}
         draft: false
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
-    - name: Build Summary
+    - name: Send build notification
       if: always()
       run: |
-        echo "================================================"
-        echo "               BUILD SUMMARY"
-        echo "================================================"
-        
         if [ "${{ job.status }}" == "success" ]; then
-          echo ""
-          echo "✅ Build Successful!"
-          echo ""
-          echo "📦 Generated Files:"
-          ls -1 output/*.apk 2>/dev/null || echo "  No APK files found"
-          echo ""
-          echo "🔑 Keystore Information:"
-          echo "  - Keystore saved to Artifacts"
-          echo "  - Info saved to KEYSTORE_INFO.txt"
-          echo ""
-          echo "📥 Download Instructions:"
-          echo "  1. Go to Actions -> Select this run"
-          echo "  2. Scroll to Artifacts section"
-          echo "  3. Download apk-files.zip"
-          echo ""
-          if [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
-            echo "⚠️  IMPORTANT REMINDER:"
-            echo "  First build completed with new keystore!"
-            echo "  Please download keystore-info immediately"
-            echo "  and add passwords to Secrets"
-            echo "  Otherwise next build will generate new keys!"
-          fi
-          echo ""
+          echo "✅ 构建成功！"
+          echo "📦 APK 文件已生成"
+          echo "🔑 签名密钥已保存（请在 Actions artifacts 中下载备份）"
         else
-          echo ""
-          echo "❌ Build Failed"
-          echo ""
-          echo "Please check build logs for details"
-          echo ""
+          echo "❌ 构建失败"
         fi
-        
-        echo "================================================"
