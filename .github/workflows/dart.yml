@@ -149,17 +149,47 @@ jobs:
     - name: Generate localization files
       run: |
         echo "🔄 Generating localization files..."
-        flutter gen-l10n
+        echo ""
+        
+        # 显示配置信息
+        echo "📋 Current configuration:"
+        if [ -f "l10n.yaml" ]; then
+          cat l10n.yaml
+        fi
+        
+        echo ""
+        echo "📂 ARB files:"
+        find lib/l10n -name "*.arb" -exec echo "  {}" \; -exec cat {} \; 2>/dev/null || echo "  No ARB files found"
+        
+        echo ""
+        echo "🔄 Running flutter gen-l10n..."
+        
+        # 运行并捕获输出
+        if flutter gen-l10n 2>&1; then
+          echo ""
+          echo "✅ Command completed"
+        else
+          echo ""
+          echo "❌ Command failed with exit code $?"
+        fi
         
         # 验证生成的文件
+        echo ""
+        echo "🔍 Checking generated files..."
         if [ -f "lib/generated/l10n.dart" ]; then
-          echo "✅ Localization files generated successfully"
-          echo "📄 Generated file: lib/generated/l10n.dart"
+          echo "✅ lib/generated/l10n.dart exists"
+          echo "📄 File size: $(wc -c < lib/generated/l10n.dart) bytes"
         else
-          echo "❌ Failed to generate localization files"
-          echo "Please check the configuration"
+          echo "❌ lib/generated/l10n.dart NOT found"
+          echo ""
+          echo "📂 Contents of lib/generated/:"
+          ls -la lib/generated/ 2>/dev/null || echo "  Directory does not exist"
+          echo ""
+          echo "❌ Localization generation failed"
           exit 1
         fi
+        
+        echo "✅ Localization files generated successfully"
       
     - name: Generate signing keystore
       run: |
