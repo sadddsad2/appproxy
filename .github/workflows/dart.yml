@@ -1,22 +1,24 @@
-name: Build APK
+name: Build and Release APK
 
 on:
   push:
     branches: [ main, master ]
-    tags: [ 'v*' ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout
+    - name: Checkout code
       uses: actions/checkout@v4
       
     - name: Setup Java
@@ -31,135 +33,272 @@ jobs:
         flutter-version: '3.24.0'
         channel: 'stable'
         
-    - name: Install dependencies
+    - name: Get Flutter dependencies
       run: flutter pub get
       
-    - name: Generate localization
+    - name: Generate localization files
       run: |
         # 检查是否有国际化配置
-        if [ -f "l10n.yaml" ]; then
-          echo "Found l10n.yaml, generating localization files..."
-          flutter gen-l10n
-        elif grep -q "generate: true" pubspec.yaml; then
-          echo "Found generate: true in pubspec.yaml"
-          # 创建默认的 l10n.yaml
-          cat > l10n.yaml << 'ENDOFL10N'
-arb-dir: lib/l10n
-template-arb-file: intl_en.arb
-output-localization-file: l10n.dart
-synthetic-package: false
-ENDOFL10N
-          
-          # 创建默认的 arb 文件
-          mkdir -p lib/l10n
-          cat > lib/l10n/intl_en.arb << 'ENDOFARB'
-{
-  "@@locale": "en",
-  "appTitle": "AppProxy"
-}
-ENDOFARB
-          
-          flutter gen-l10n
+        if [ -f "l10n.yaml" ] || grep -q "generate: true" pubspec.yaml; then
+          echo "📝 生成国际化文件..."
+          flutter gen-l10n || echo "⚠️  国际化生成失败，继续构建"
         else
-          echo "No localization config found, skipping..."
+          echo "ℹ️  未检测到国际化配置，跳过"
         fi
       
-    - name: Create keystore
+    - name: Generate signing keystore
       run: |
+        # 创建密钥存储目录
         mkdir -p android/app/keystore
         
+        # 生成随机密码（如果没有在 Secrets 中设置）
         if [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
-          KEY_PASS=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
-          STORE_PASS=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+          KEY_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+          KEYSTORE_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
           
-          echo "IMPORTANT: Save these passwords!"
-          echo "KEY_PASSWORD=$KEY_PASS"
-          echo "KEYSTORE_PASSWORD=$STORE_PASS"
+          echo "🔐 首次运行 - 生成新密码"
+          echo ""
+          echo "⚠️  重要: 请保存以下密码并手动添加到 GitHub Secrets!"
+          echo "================================================"
+          echo "KEY_PASSWORD=$KEY_PASSWORD"
+          echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+          echo "================================================"
+          echo ""
+          echo "📝 添加步骤:"
+          echo "1. 进入仓库 Settings -> Secrets and variables -> Actions"
+          echo "2. 点击 New repository secret"
+          echo "3. 添加 KEY_PASSWORD (值见上方)"
+          echo "4. 添加 KEYSTORE_PASSWORD (值见上方)"
+          echo ""
+          echo "💡 提示: 密码信息也会保存在 Artifacts 中供下载"
+          echo ""
         else
-          KEY_PASS="${{ secrets.KEY_PASSWORD }}"
-          STORE_PASS="${{ secrets.KEYSTORE_PASSWORD }}"
+          KEY_PASSWORD="${{ secrets.KEY_PASSWORD }}"
+          KEYSTORE_PASSWORD="${{ secrets.KEYSTORE_PASSWORD }}"
+          
+          echo "✅ 使用已保存的密码"
         fi
         
+        # 生成密钥库
         keytool -genkey -v \
           -keystore android/app/keystore/release.jks \
           -keyalg RSA \
           -keysize 2048 \
           -validity 10000 \
           -alias release \
-          -storepass "$STORE_PASS" \
-          -keypass "$KEY_PASS" \
-          -dname "CN=AppProxy, OU=Dev, O=YS1231, L=Tokyo, S=Tokyo, C=JP"
+          -storepass "$KEYSTORE_PASSWORD" \
+          -keypass "$KEY_PASSWORD" \
+          -dname "CN=AppProxy, OU=Development, O=YS1231, L=Tokyo, S=Tokyo, C=JP"
         
-        echo "KEY_PASSWORD=$KEY_PASS" >> $GITHUB_ENV
-        echo "KEYSTORE_PASSWORD=$STORE_PASS" >> $GITHUB_ENV
+        echo "✅ Keystore generated successfully"
+        echo "KEY_ALIAS=release" >> $GITHUB_ENV
+        echo "KEY_PASSWORD=$KEY_PASSWORD" >> $GITHUB_ENV
+        echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
         
+        # 保存密码信息到文件（备份用）
         mkdir -p output
-        echo "KEY_PASSWORD: $KEY_PASS" > output/keystore-info.txt
-        echo "KEYSTORE_PASSWORD: $STORE_PASS" >> output/keystore-info.txt
+        cat > output/KEYSTORE_INFO.txt << 'ENDOFFILE'
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        AppProxy Release Keystore Information
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        
+        请妥善保管此文件和 keystore 文件！
+        
+        Keystore File: release.jks
+        KEY_ALIAS: release
+        ENDOFFILE
+        echo "KEY_PASSWORD: $KEY_PASSWORD" >> output/KEYSTORE_INFO.txt
+        echo "KEYSTORE_PASSWORD: $KEYSTORE_PASSWORD" >> output/KEYSTORE_INFO.txt
+        cat >> output/KEYSTORE_INFO.txt << 'ENDOFFILE'
+        
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        如何添加到 GitHub Secrets:
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        
+        1. 进入仓库的 Settings
+        2. 点击 Secrets and variables -> Actions
+        3. 点击 New repository secret
+        4. 添加以下 secrets (密码见上方)
+        5. 将 release.jks 文件保存到安全位置
+        
+        后续构建时，workflow 会从 Secrets 读取这些密码。
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        ENDOFFILE
       
-    - name: Configure signing
+    - name: Modify build.gradle to use environment variables
       run: |
+        # 备份原文件
+        cp android/app/build.gradle android/app/build.gradle.bak
+        
+        # 移除 local.properties 相关代码
         sed -i '/def keystore = localProperties.getProperty/,/}/d' android/app/build.gradle
+        
+        # 修改签名配置使用环境变量
         sed -i 's|storeFile file(keystore)|storeFile file("keystore/release.jks")|g' android/app/build.gradle
         
-    - name: Build APK
-      run: flutter build apk --release --split-per-abi
+        echo "✅ build.gradle modified successfully"
         
-    - name: Prepare output
+    - name: Build APK (Release)
       run: |
-        VERSION=$(grep "version:" pubspec.yaml | sed 's/version: //' | tr -d ' ')
-        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "🔨 开始构建 APK..."
+        flutter build apk --release --split-per-abi
+        echo "✅ APK 构建完成"
         
+    - name: Rename APK files
+      run: |
+        # 获取版本号
+        VERSION=$(grep "version:" pubspec.yaml | sed 's/version: //' | tr -d ' ')
+        
+        # 创建输出目录
         mkdir -p output
         
+        echo "📦 重命名 APK 文件 (版本: $VERSION)..."
+        
+        # 重命名文件
         for file in build/app/outputs/flutter-apk/*.apk; do
           if [ -f "$file" ]; then
             filename=$(basename "$file")
             if [[ $filename == *"arm64-v8a"* ]]; then
-              cp "$file" "output/appproxy-v${VERSION}-arm64-v8a.apk"
+              cp "$file" "output/appproxy-v${VERSION}-arm64-v8a-release.apk"
+              echo "  ✓ arm64-v8a"
             elif [[ $filename == *"armeabi-v7a"* ]]; then
-              cp "$file" "output/appproxy-v${VERSION}-armeabi-v7a.apk"
+              cp "$file" "output/appproxy-v${VERSION}-armeabi-v7a-release.apk"
+              echo "  ✓ armeabi-v7a"
             elif [[ $filename == *"x86_64"* ]]; then
-              cp "$file" "output/appproxy-v${VERSION}-x86_64.apk"
+              cp "$file" "output/appproxy-v${VERSION}-x86_64-release.apk"
+              echo "  ✓ x86_64"
+            else
+              cp "$file" "output/appproxy-v${VERSION}-universal-release.apk"
+              echo "  ✓ universal"
             fi
           fi
         done
         
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        
+    - name: Generate SHA256 checksums
+      run: |
+        echo "🔐 生成 SHA256 校验和..."
         cd output
         for file in *.apk; do
-          [ -f "$file" ] && sha256sum "$file" > "$file.sha256"
+          if [ -f "$file" ]; then
+            sha256sum "$file" > "$file.sha256"
+            echo "  ✓ $file.sha256"
+          fi
         done
+        cd ..
         
-    - name: Upload APK
+    - name: List output files
+      run: |
+        echo "📋 输出文件列表:"
+        ls -lh output/
+        
+    - name: Upload APK artifacts
       uses: actions/upload-artifact@v4
       with:
         name: apk-files
         path: output/*.apk
+        retention-days: 30
         
-    - name: Upload keystore
+    - name: Upload checksums
       uses: actions/upload-artifact@v4
       with:
-        name: keystore
-        path: |
-          android/app/keystore/release.jks
-          output/keystore-info.txt
+        name: checksums
+        path: output/*.sha256
+        retention-days: 30
+        
+    - name: Upload keystore (first time)
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-keystore
+        path: android/app/keystore/release.jks
+        retention-days: 90
+        
+    - name: Upload keystore info
+      uses: actions/upload-artifact@v4
+      with:
+        name: keystore-info
+        path: output/KEYSTORE_INFO.txt
+        retention-days: 90
         
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/v')
       uses: softprops/action-gh-release@v1
       with:
-        files: output/*
+        files: |
+          output/*.apk
+          output/*.sha256
         body: |
           ## AppProxy ${{ env.VERSION }}
           
-          **Download:**
-          - arm64-v8a: Modern phones (recommended)
-          - armeabi-v7a: Older devices
-          - x86_64: Emulators
+          ### Download Instructions
           
-          **Verify:**
+          | Architecture | Device Type | Recommended |
+          |--------------|-------------|-------------|
+          | **arm64-v8a** | 64-bit ARM | ⭐⭐⭐⭐⭐ |
+          | armeabi-v7a | 32-bit ARM | ⭐⭐⭐ |
+          | x86_64 | 64-bit x86 | ⭐⭐ |
+          | universal | All devices | ⭐ |
+          
+          > Most modern phones (2016+) should use **arm64-v8a**
+          
+          ### Security Verification
+          
+          Verify integrity with SHA256:
+          
           ```bash
-          sha256sum -c appproxy-*.apk.sha256
+          sha256sum -c appproxy-v${{ env.VERSION }}-arm64-v8a-release.apk.sha256
           ```
+          
+          ### Build Information
+          
+          - **Build Time**: ${{ github.event.head_commit.timestamp }}
+          - **Commit**: ${{ github.event.head_commit.author.name }}
+          - **SHA**: ${{ github.sha }}
+          
+        draft: false
+        prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Build Summary
+      if: always()
+      run: |
+        echo "================================================"
+        echo "               BUILD SUMMARY"
+        echo "================================================"
+        
+        if [ "${{ job.status }}" == "success" ]; then
+          echo ""
+          echo "✅ Build Successful!"
+          echo ""
+          echo "📦 Generated Files:"
+          ls -1 output/*.apk 2>/dev/null || echo "  No APK files found"
+          echo ""
+          echo "🔑 Keystore Information:"
+          echo "  - Keystore saved to Artifacts"
+          echo "  - Info saved to KEYSTORE_INFO.txt"
+          echo ""
+          echo "📥 Download Instructions:"
+          echo "  1. Go to Actions -> Select this run"
+          echo "  2. Scroll to Artifacts section"
+          echo "  3. Download apk-files.zip"
+          echo ""
+          if [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
+            echo "⚠️  IMPORTANT REMINDER:"
+            echo "  First build completed with new keystore!"
+            echo "  Please download keystore-info immediately"
+            echo "  and add passwords to Secrets"
+            echo "  Otherwise next build will generate new keys!"
+          fi
+          echo ""
+        else
+          echo ""
+          echo "❌ Build Failed"
+          echo ""
+          echo "Please check build logs for details"
+          echo ""
+        fi
+        
+        echo "================================================"
