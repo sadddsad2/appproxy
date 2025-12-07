@@ -36,7 +36,110 @@ jobs:
     - name: Get Flutter dependencies
       run: flutter pub get
       
-    # 移除国际化生成步骤,因为不使用国际化功能
+    - name: Setup internationalization configuration
+      run: |
+        echo "🌍 Setting up internationalization..."
+        
+        # 检查 pubspec.yaml 中是否已有 generate: true
+        if ! grep -q "generate: true" pubspec.yaml; then
+          echo "📝 Adding 'generate: true' to pubspec.yaml..."
+          
+          # 在 flutter: 部分添加 generate: true
+          if grep -q "^flutter:" pubspec.yaml; then
+            # 如果 flutter: 已存在,在其下添加 generate: true
+            sed -i '/^flutter:/a\  generate: true' pubspec.yaml
+          else
+            # 如果 flutter: 不存在,添加整个部分
+            echo "" >> pubspec.yaml
+            echo "flutter:" >> pubspec.yaml
+            echo "  generate: true" >> pubspec.yaml
+          fi
+          
+          echo "✅ Added generate: true to pubspec.yaml"
+        else
+          echo "✅ generate: true already exists in pubspec.yaml"
+        fi
+        
+        # 创建 l10n.yaml 配置文件
+        if [ ! -f "l10n.yaml" ]; then
+          echo "📝 Creating l10n.yaml..."
+          cat > l10n.yaml << 'EOF'
+arb-dir: lib/l10n
+template-arb-file: app_en.arb
+output-localization-file: l10n.dart
+output-class: S
+EOF
+          echo "✅ Created l10n.yaml"
+        else
+          echo "✅ l10n.yaml already exists"
+        fi
+        
+        # 创建 l10n 目录和基础 ARB 文件
+        mkdir -p lib/l10n
+        
+        if [ ! -f "lib/l10n/app_en.arb" ]; then
+          echo "📝 Creating default ARB file..."
+          cat > lib/l10n/app_en.arb << 'EOF'
+{
+  "@@locale": "en",
+  "text_proxy": "Proxy",
+  "text_update_tips": "Update Tips",
+  "text_current_version": "Current Version",
+  "text_latest_version": "Latest Version",
+  "text_update_content": "Update Content",
+  "text_cancel": "Cancel",
+  "text_download": "Download",
+  "text_current_latest": "Already the latest version"
+}
+EOF
+          echo "✅ Created app_en.arb with default strings"
+        else
+          echo "✅ app_en.arb already exists"
+        fi
+        
+        # 如果需要中文,创建 app_zh.arb
+        if [ ! -f "lib/l10n/app_zh.arb" ]; then
+          echo "📝 Creating Chinese ARB file..."
+          cat > lib/l10n/app_zh.arb << 'EOF'
+{
+  "@@locale": "zh",
+  "text_proxy": "代理",
+  "text_update_tips": "更新提示",
+  "text_current_version": "当前版本",
+  "text_latest_version": "最新版本",
+  "text_update_content": "更新内容",
+  "text_cancel": "取消",
+  "text_download": "下载",
+  "text_current_latest": "已是最新版本"
+}
+EOF
+          echo "✅ Created app_zh.arb"
+        else
+          echo "✅ app_zh.arb already exists"
+        fi
+        
+        echo ""
+        echo "📋 Configuration summary:"
+        echo "  - pubspec.yaml: generate: true ✓"
+        echo "  - l10n.yaml: configured ✓"
+        echo "  - lib/l10n/app_en.arb: created ✓"
+        echo "  - lib/l10n/app_zh.arb: created ✓"
+        echo ""
+      
+    - name: Generate localization files
+      run: |
+        echo "🔄 Generating localization files..."
+        flutter gen-l10n
+        
+        # 验证生成的文件
+        if [ -f "lib/generated/l10n.dart" ]; then
+          echo "✅ Localization files generated successfully"
+          echo "📄 Generated file: lib/generated/l10n.dart"
+        else
+          echo "❌ Failed to generate localization files"
+          echo "Please check the configuration"
+          exit 1
+        fi
       
     - name: Generate signing keystore
       run: |
