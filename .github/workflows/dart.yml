@@ -40,11 +40,8 @@ jobs:
       run: |
         echo "🌍 Setting up internationalization..."
         
-        # 检查 pubspec.yaml 中是否已有 generate: true
         if ! grep -q "generate: true" pubspec.yaml; then
-          echo "📝 Adding 'generate: true' to pubspec.yaml..."
-          
-          # 在 flutter: 部分添加 generate: true
+          echo "📝 Adding generate: true to pubspec.yaml..."
           if grep -q "^flutter:" pubspec.yaml; then
             sed -i '/^flutter:/a\  generate: true' pubspec.yaml
           else
@@ -52,43 +49,35 @@ jobs:
             echo "flutter:" >> pubspec.yaml
             echo "  generate: true" >> pubspec.yaml
           fi
-          
-          echo "✅ Added generate: true to pubspec.yaml"
+          echo "✅ Added generate: true"
         else
-          echo "✅ generate: true already exists in pubspec.yaml"
+          echo "✅ generate: true exists"
         fi
         
-        # 读取或创建 l10n.yaml
         if [ -f "l10n.yaml" ]; then
-          echo "📄 Found existing l10n.yaml:"
+          echo "📄 Found existing l10n.yaml"
           cat l10n.yaml
-          
           ARB_DIR=$(grep "arb-dir:" l10n.yaml | sed 's/.*arb-dir:[[:space:]]*//' | awk '{print $1}')
           TEMPLATE_FILE=$(grep "template-arb-file:" l10n.yaml | sed 's/.*template-arb-file:[[:space:]]*//' | awk '{print $1}')
         else
           echo "📝 Creating l10n.yaml..."
-          cat > l10n.yaml << 'EOFCONFIG'
-arb-dir: lib/l10n
-template-arb-file: app_en.arb
-output-localization-file: l10n.dart
-output-class: S
-EOFCONFIG
+          echo 'arb-dir: lib/l10n' > l10n.yaml
+          echo 'template-arb-file: app_en.arb' >> l10n.yaml
+          echo 'output-localization-file: l10n.dart' >> l10n.yaml
+          echo 'output-class: S' >> l10n.yaml
           echo "✅ Created l10n.yaml"
           ARB_DIR="lib/l10n"
           TEMPLATE_FILE="app_en.arb"
         fi
         
         echo ""
-        echo "📂 Configuration:"
-        echo "  ARB directory: $ARB_DIR"
-        echo "  Template file: $TEMPLATE_FILE"
+        echo "📂 ARB directory: $ARB_DIR"
+        echo "📝 Template file: $TEMPLATE_FILE"
         
-        # 创建目录
         mkdir -p "$ARB_DIR"
         
-        # 列出并分析所有 ARB 文件
         echo ""
-        echo "📋 Existing files in $ARB_DIR:"
+        echo "📋 Existing files:"
         if ls "$ARB_DIR"/*.arb 1> /dev/null 2>&1; then
           for arbfile in "$ARB_DIR"/*.arb; do
             if [ -f "$arbfile" ]; then
@@ -98,9 +87,8 @@ EOFCONFIG
             fi
           done
           
-          # 激进清理：删除所有非模板文件
           echo ""
-          echo "🧹 Aggressive cleanup: keeping only template file..."
+          echo "🧹 Cleaning: keeping only template..."
           for arbfile in "$ARB_DIR"/*.arb; do
             filename=$(basename "$arbfile")
             if [ "$filename" != "$TEMPLATE_FILE" ]; then
@@ -114,11 +102,10 @@ EOFCONFIG
           echo "  (no files found)"
         fi
         
-        # 确保模板文件存在
         if [ ! -f "$ARB_DIR/$TEMPLATE_FILE" ]; then
           echo ""
-          echo "📝 Creating template file: $TEMPLATE_FILE"
-          cat > "$ARB_DIR/$TEMPLATE_FILE" << 'EOFENGLISH'
+          echo "📝 Creating template: $TEMPLATE_FILE"
+          cat > "$ARB_DIR/$TEMPLATE_FILE" <<'ARBEOF'
 {
   "@@locale": "en",
   "text_proxy": "Proxy",
@@ -130,11 +117,10 @@ EOFCONFIG
   "text_download": "Download",
   "text_current_latest": "Already the latest version"
 }
-EOFENGLISH
+ARBEOF
           echo "✅ Template created"
         fi
         
-        # 最终验证
         echo ""
         echo "✅ Final state:"
         for arbfile in "$ARB_DIR"/*.arb; do
@@ -151,7 +137,6 @@ EOFENGLISH
         echo "🔄 Generating localization files..."
         echo ""
         
-        # 显示配置信息
         echo "📋 Current configuration:"
         if [ -f "l10n.yaml" ]; then
           cat l10n.yaml
@@ -164,7 +149,6 @@ EOFENGLISH
         echo ""
         echo "🔄 Running flutter gen-l10n..."
         
-        # 运行并捕获输出
         if flutter gen-l10n 2>&1; then
           echo ""
           echo "✅ Command completed"
@@ -173,7 +157,6 @@ EOFENGLISH
           echo "❌ Command failed with exit code $?"
         fi
         
-        # 验证生成的文件
         echo ""
         echo "🔍 Checking generated files..."
         if [ -f "lib/generated/l10n.dart" ]; then
@@ -193,10 +176,8 @@ EOFENGLISH
       
     - name: Generate signing keystore
       run: |
-        # 创建密钥存储目录
         mkdir -p android/app/keystore
         
-        # 生成随机密码(如果没有在 Secrets 中设置)
         if [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
           KEY_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
           KEYSTORE_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
@@ -215,16 +196,12 @@ EOFENGLISH
           echo "3. 添加 KEY_PASSWORD (值见上方)"
           echo "4. 添加 KEYSTORE_PASSWORD (值见上方)"
           echo ""
-          echo "💡 提示: 密码信息也会保存在 Artifacts 中供下载"
-          echo ""
         else
           KEY_PASSWORD="${{ secrets.KEY_PASSWORD }}"
           KEYSTORE_PASSWORD="${{ secrets.KEYSTORE_PASSWORD }}"
-          
           echo "✅ 使用已保存的密码"
         fi
         
-        # 生成密钥库
         keytool -genkey -v \
           -keystore android/app/keystore/release.jks \
           -keyalg RSA \
@@ -240,47 +217,40 @@ EOFENGLISH
         echo "KEY_PASSWORD=$KEY_PASSWORD" >> $GITHUB_ENV
         echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
         
-        # 保存密码信息到文件(备份用)
         mkdir -p output
-        cat > output/KEYSTORE_INFO.txt << 'ENDOFFILE'
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        AppProxy Release Keystore Information
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        
-        请妥善保管此文件和 keystore 文件!
-        
-        Keystore File: release.jks
-        KEY_ALIAS: release
-        ENDOFFILE
+        cat > output/KEYSTORE_INFO.txt <<'KEYEOF'
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AppProxy Release Keystore Information
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+请妥善保管此文件和 keystore 文件!
+
+Keystore File: release.jks
+KEY_ALIAS: release
+KEYEOF
         echo "KEY_PASSWORD: $KEY_PASSWORD" >> output/KEYSTORE_INFO.txt
         echo "KEYSTORE_PASSWORD: $KEYSTORE_PASSWORD" >> output/KEYSTORE_INFO.txt
-        cat >> output/KEYSTORE_INFO.txt << 'ENDOFFILE'
-        
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        如何添加到 GitHub Secrets:
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        
-        1. 进入仓库的 Settings
-        2. 点击 Secrets and variables -> Actions
-        3. 点击 New repository secret
-        4. 添加以下 secrets (密码见上方)
-        5. 将 release.jks 文件保存到安全位置
-        
-        后续构建时,workflow 会从 Secrets 读取这些密码。
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        ENDOFFILE
+        cat >> output/KEYSTORE_INFO.txt <<'KEYEOF'
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+如何添加到 GitHub Secrets:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. 进入仓库的 Settings
+2. 点击 Secrets and variables -> Actions
+3. 点击 New repository secret
+4. 添加以下 secrets (密码见上方)
+5. 将 release.jks 文件保存到安全位置
+
+后续构建时,workflow 会从 Secrets 读取这些密码。
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+KEYEOF
       
     - name: Modify build.gradle to use environment variables
       run: |
-        # 备份原文件
         cp android/app/build.gradle android/app/build.gradle.bak
-        
-        # 移除 local.properties 相关代码
         sed -i '/def keystore = localProperties.getProperty/,/}/d' android/app/build.gradle
-        
-        # 修改签名配置使用环境变量
         sed -i 's|storeFile file(keystore)|storeFile file("keystore/release.jks")|g' android/app/build.gradle
-        
         echo "✅ build.gradle modified successfully"
         
     - name: Build APK (Release)
@@ -291,15 +261,11 @@ EOFENGLISH
         
     - name: Rename APK files
       run: |
-        # 获取版本号
         VERSION=$(grep "version:" pubspec.yaml | sed 's/version: //' | tr -d ' ')
-        
-        # 创建输出目录
         mkdir -p output
         
         echo "📦 重命名 APK 文件 (版本: $VERSION)..."
         
-        # 重命名文件
         for file in build/app/outputs/flutter-apk/*.apk; do
           if [ -f "$file" ]; then
             filename=$(basename "$file")
