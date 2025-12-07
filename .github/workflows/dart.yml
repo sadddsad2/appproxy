@@ -105,19 +105,17 @@ jobs:
         if [ ! -f "$ARB_DIR/$TEMPLATE_FILE" ]; then
           echo ""
           echo "📝 Creating template: $TEMPLATE_FILE"
-          cat > "$ARB_DIR/$TEMPLATE_FILE" <<'ARBEOF'
-{
-  "@@locale": "en",
-  "text_proxy": "Proxy",
-  "text_update_tips": "Update Tips",
-  "text_current_version": "Current Version",
-  "text_latest_version": "Latest Version",
-  "text_update_content": "Update Content",
-  "text_cancel": "Cancel",
-  "text_download": "Download",
-  "text_current_latest": "Already the latest version"
-}
-ARBEOF
+          echo '{' > "$ARB_DIR/$TEMPLATE_FILE"
+          echo '  "@@locale": "en",' >> "$ARB_DIR/$TEMPLATE_FILE"
+          echo '  "text_proxy": "Proxy",' >> "$ARB_DIR/$TEMPLATE_FILE"
+          echo '  "text_update_tips": "Update Tips",' >> "$ARB_DIR/$TEMPLATE_FILE"
+          echo '  "text_current_version": "Current Version",' >> "$ARB_DIR/$TEMPLATE_FILE"
+          echo '  "text_latest_version": "Latest Version",' >> "$ARB_DIR/$TEMPLATE_FILE"
+          echo '  "text_update_content": "Update Content",' >> "$ARB_DIR/$TEMPLATE_FILE"
+          echo '  "text_cancel": "Cancel",' >> "$ARB_DIR/$TEMPLATE_FILE"
+          echo '  "text_download": "Download",' >> "$ARB_DIR/$TEMPLATE_FILE"
+          echo '  "text_current_latest": "Already the latest version"' >> "$ARB_DIR/$TEMPLATE_FILE"
+          echo '}' >> "$ARB_DIR/$TEMPLATE_FILE"
           echo "✅ Template created"
         fi
         
@@ -218,33 +216,29 @@ ARBEOF
         echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
         
         mkdir -p output
-        cat > output/KEYSTORE_INFO.txt <<'KEYEOF'
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-AppProxy Release Keystore Information
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-请妥善保管此文件和 keystore 文件!
-
-Keystore File: release.jks
-KEY_ALIAS: release
-KEYEOF
+        echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' > output/KEYSTORE_INFO.txt
+        echo 'AppProxy Release Keystore Information' >> output/KEYSTORE_INFO.txt
+        echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' >> output/KEYSTORE_INFO.txt
+        echo '' >> output/KEYSTORE_INFO.txt
+        echo '请妥善保管此文件和 keystore 文件!' >> output/KEYSTORE_INFO.txt
+        echo '' >> output/KEYSTORE_INFO.txt
+        echo 'Keystore File: release.jks' >> output/KEYSTORE_INFO.txt
+        echo 'KEY_ALIAS: release' >> output/KEYSTORE_INFO.txt
         echo "KEY_PASSWORD: $KEY_PASSWORD" >> output/KEYSTORE_INFO.txt
         echo "KEYSTORE_PASSWORD: $KEYSTORE_PASSWORD" >> output/KEYSTORE_INFO.txt
-        cat >> output/KEYSTORE_INFO.txt <<'KEYEOF'
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-如何添加到 GitHub Secrets:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-1. 进入仓库的 Settings
-2. 点击 Secrets and variables -> Actions
-3. 点击 New repository secret
-4. 添加以下 secrets (密码见上方)
-5. 将 release.jks 文件保存到安全位置
-
-后续构建时,workflow 会从 Secrets 读取这些密码。
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-KEYEOF
+        echo '' >> output/KEYSTORE_INFO.txt
+        echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' >> output/KEYSTORE_INFO.txt
+        echo '如何添加到 GitHub Secrets:' >> output/KEYSTORE_INFO.txt
+        echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' >> output/KEYSTORE_INFO.txt
+        echo '' >> output/KEYSTORE_INFO.txt
+        echo '1. 进入仓库的 Settings' >> output/KEYSTORE_INFO.txt
+        echo '2. 点击 Secrets and variables -> Actions' >> output/KEYSTORE_INFO.txt
+        echo '3. 点击 New repository secret' >> output/KEYSTORE_INFO.txt
+        echo '4. 添加以下 secrets (密码见上方)' >> output/KEYSTORE_INFO.txt
+        echo '5. 将 release.jks 文件保存到安全位置' >> output/KEYSTORE_INFO.txt
+        echo '' >> output/KEYSTORE_INFO.txt
+        echo '后续构建时,workflow 会从 Secrets 读取这些密码。' >> output/KEYSTORE_INFO.txt
+        echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' >> output/KEYSTORE_INFO.txt
       
     - name: Modify build.gradle to use environment variables
       run: |
