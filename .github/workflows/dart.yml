@@ -1,8 +1,4 @@
-- name: Clean and setup internationalization
-      run: |
-        echo "🌍 Setting up internationalization..."
-        
-        # 检name: Build and Release APK
+name: Build and Release APK
 
 on:
   push:
@@ -40,7 +36,7 @@ jobs:
     - name: Get Flutter dependencies
       run: flutter pub get
       
-    - name: Setup internationalization configuration
+    - name: Clean and setup internationalization
       run: |
         echo "🌍 Setting up internationalization..."
         
@@ -50,10 +46,8 @@ jobs:
           
           # 在 flutter: 部分添加 generate: true
           if grep -q "^flutter:" pubspec.yaml; then
-            # 如果 flutter: 已存在,在其下添加 generate: true
             sed -i '/^flutter:/a\  generate: true' pubspec.yaml
           else
-            # 如果 flutter: 不存在,添加整个部分
             echo "" >> pubspec.yaml
             echo "flutter:" >> pubspec.yaml
             echo "  generate: true" >> pubspec.yaml
@@ -66,10 +60,9 @@ jobs:
         
         # 读取或创建 l10n.yaml
         if [ -f "l10n.yaml" ]; then
-          echo "📄 Found existing l10n.yaml"
+          echo "📄 Found existing l10n.yaml:"
           cat l10n.yaml
           
-          # 读取配置
           ARB_DIR=$(grep "arb-dir:" l10n.yaml | sed 's/.*arb-dir:[[:space:]]*//' | awk '{print $1}')
           TEMPLATE_FILE=$(grep "template-arb-file:" l10n.yaml | sed 's/.*template-arb-file:[[:space:]]*//' | awk '{print $1}')
         else
@@ -86,60 +79,39 @@ jobs:
         fi
         
         echo ""
-        echo "📂 ARB directory: $ARB_DIR"
-        echo "📝 Template file: $TEMPLATE_FILE"
+        echo "📂 Configuration:"
+        echo "  ARB directory: $ARB_DIR"
+        echo "  Template file: $TEMPLATE_FILE"
         
-        # 确保目录存在
+        # 创建目录
         mkdir -p "$ARB_DIR"
         
-        # 列出现有文件
+        # 列出并分析所有 ARB 文件
         echo ""
-        echo "📋 Current ARB files:"
+        echo "📋 Existing files in $ARB_DIR:"
         if ls "$ARB_DIR"/*.arb 1> /dev/null 2>&1; then
-          ls -la "$ARB_DIR"/*.arb
-          
-          # 分析每个文件的 locale
-          echo ""
-          echo "🔍 Analyzing locales..."
-          declare -A locale_files
           for arbfile in "$ARB_DIR"/*.arb; do
             if [ -f "$arbfile" ]; then
               filename=$(basename "$arbfile")
-              locale=$(grep '"@@locale"' "$arbfile" | sed 's/.*"@@locale"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-              echo "  $filename -> locale: '$locale'"
-              
-              # 记录 locale 对应的文件
-              if [ ! -z "$locale" ]; then
-                if [ -z "${locale_files[$locale]}" ]; then
-                  locale_files[$locale]="$filename"
-                else
-                  locale_files[$locale]="${locale_files[$locale]} $filename"
-                fi
-              fi
+              locale=$(grep '"@@locale"' "$arbfile" | head -1 | sed 's/.*"@@locale"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+              echo "  📄 $filename (locale: $locale)"
             fi
           done
           
-          # 检查重复并清理
+          # 激进清理：删除所有非模板文件
           echo ""
-          echo "🧹 Cleaning up duplicates..."
-          for locale in "${!locale_files[@]}"; do
-            files=(${locale_files[$locale]})
-            if [ ${#files[@]} -gt 1 ]; then
-              echo "⚠️  Locale '$locale' found in multiple files: ${files[@]}"
-              
-              # 保留模板文件,删除其他
-              for file in "${files[@]}"; do
-                if [ "$file" != "$TEMPLATE_FILE" ]; then
-                  echo "  ❌ Deleting: $ARB_DIR/$file"
-                  rm -f "$ARB_DIR/$file"
-                else
-                  echo "  ✅ Keeping template: $file"
-                fi
-              done
+          echo "🧹 Aggressive cleanup: keeping only template file..."
+          for arbfile in "$ARB_DIR"/*.arb; do
+            filename=$(basename "$arbfile")
+            if [ "$filename" != "$TEMPLATE_FILE" ]; then
+              echo "  ❌ Removing: $filename"
+              rm -f "$arbfile"
+            else
+              echo "  ✅ Keeping: $filename"
             fi
           done
         else
-          echo "  No ARB files found"
+          echo "  (no files found)"
         fi
         
         # 确保模板文件存在
@@ -159,20 +131,17 @@ jobs:
           "text_current_latest": "Already the latest version"
         }
         EOFENGLISH
-          echo "✅ Created $TEMPLATE_FILE"
+          echo "✅ Template created"
         fi
         
         # 最终验证
         echo ""
-        echo "✅ Final ARB files:"
-        ls -la "$ARB_DIR"/*.arb 2>/dev/null
-        echo ""
-        echo "🔍 Final locale check:"
+        echo "✅ Final state:"
         for arbfile in "$ARB_DIR"/*.arb; do
           if [ -f "$arbfile" ]; then
             filename=$(basename "$arbfile")
-            locale=$(grep '"@@locale"' "$arbfile" | sed 's/.*"@@locale"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-            echo "  ✓ $filename -> $locale"
+            locale=$(grep '"@@locale"' "$arbfile" | head -1 | sed 's/.*"@@locale"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+            echo "  ✓ $filename -> locale: $locale"
           fi
         done
         echo ""
