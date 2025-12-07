@@ -1,4 +1,8 @@
-name: Build and Release APK
+- name: Clean and setup internationalization
+      run: |
+        echo "🌍 Setting up internationalization..."
+        
+        # 检name: Build and Release APK
 
 on:
   push:
@@ -60,61 +64,14 @@ jobs:
           echo "✅ generate: true already exists in pubspec.yaml"
         fi
         
-        # 创建 l10n 目录
-        mkdir -p lib/l10n
-        
-        # 检查是否存在 l10n.yaml
+        # 读取或创建 l10n.yaml
         if [ -f "l10n.yaml" ]; then
           echo "📄 Found existing l10n.yaml"
           cat l10n.yaml
           
           # 读取配置
-          ARB_DIR=$(grep "arb-dir:" l10n.yaml | sed 's/arb-dir: *//' | tr -d ' ')
-          TEMPLATE_FILE=$(grep "template-arb-file:" l10n.yaml | sed 's/template-arb-file: *//' | tr -d ' ')
-          
-          echo ""
-          echo "📂 ARB directory: $ARB_DIR"
-          echo "📝 Template file: $TEMPLATE_FILE"
-          
-          # 检查 ARB 目录中的文件
-          if [ -d "$ARB_DIR" ]; then
-            echo ""
-            echo "📋 Existing ARB files in $ARB_DIR:"
-            ls -la "$ARB_DIR"/*.arb 2>/dev/null || echo "  No ARB files found"
-            
-            # 检查是否有重复的 locale
-            echo ""
-            echo "🔍 Checking for duplicate locales..."
-            for arbfile in "$ARB_DIR"/*.arb; do
-              if [ -f "$arbfile" ]; then
-                locale=$(grep -o '"@@locale"[[:space:]]*:[[:space:]]*"[^"]*"' "$arbfile" | sed 's/.*"@@locale"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-                echo "  $(basename $arbfile) -> locale: $locale"
-              fi
-            done
-            
-            # 查找重复的 locale
-            duplicates=$(for arbfile in "$ARB_DIR"/*.arb; do
-              if [ -f "$arbfile" ]; then
-                grep -o '"@@locale"[[:space:]]*:[[:space:]]*"[^"]*"' "$arbfile" | sed 's/.*"@@locale"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
-              fi
-            done | sort | uniq -d)
-            
-            if [ ! -z "$duplicates" ]; then
-              echo ""
-              echo "⚠️  Found duplicate locales: $duplicates"
-              echo "🔧 Cleaning up duplicate ARB files..."
-              
-              # 只保留模板文件
-              for arbfile in "$ARB_DIR"/*.arb; do
-                if [ -f "$arbfile" ] && [ "$(basename $arbfile)" != "$TEMPLATE_FILE" ]; then
-                  echo "  Removing: $(basename $arbfile)"
-                  rm "$arbfile"
-                fi
-              done
-              
-              echo "✅ Cleanup completed"
-            fi
-          fi
+          ARB_DIR=$(grep "arb-dir:" l10n.yaml | sed 's/.*arb-dir:[[:space:]]*//' | awk '{print $1}')
+          TEMPLATE_FILE=$(grep "template-arb-file:" l10n.yaml | sed 's/.*template-arb-file:[[:space:]]*//' | awk '{print $1}')
         else
           echo "📝 Creating l10n.yaml..."
           cat > l10n.yaml << 'EOFCONFIG'
@@ -128,9 +85,67 @@ jobs:
           TEMPLATE_FILE="app_en.arb"
         fi
         
-        # 确保至少有一个模板 ARB 文件
+        echo ""
+        echo "📂 ARB directory: $ARB_DIR"
+        echo "📝 Template file: $TEMPLATE_FILE"
+        
+        # 确保目录存在
+        mkdir -p "$ARB_DIR"
+        
+        # 列出现有文件
+        echo ""
+        echo "📋 Current ARB files:"
+        if ls "$ARB_DIR"/*.arb 1> /dev/null 2>&1; then
+          ls -la "$ARB_DIR"/*.arb
+          
+          # 分析每个文件的 locale
+          echo ""
+          echo "🔍 Analyzing locales..."
+          declare -A locale_files
+          for arbfile in "$ARB_DIR"/*.arb; do
+            if [ -f "$arbfile" ]; then
+              filename=$(basename "$arbfile")
+              locale=$(grep '"@@locale"' "$arbfile" | sed 's/.*"@@locale"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+              echo "  $filename -> locale: '$locale'"
+              
+              # 记录 locale 对应的文件
+              if [ ! -z "$locale" ]; then
+                if [ -z "${locale_files[$locale]}" ]; then
+                  locale_files[$locale]="$filename"
+                else
+                  locale_files[$locale]="${locale_files[$locale]} $filename"
+                fi
+              fi
+            fi
+          done
+          
+          # 检查重复并清理
+          echo ""
+          echo "🧹 Cleaning up duplicates..."
+          for locale in "${!locale_files[@]}"; do
+            files=(${locale_files[$locale]})
+            if [ ${#files[@]} -gt 1 ]; then
+              echo "⚠️  Locale '$locale' found in multiple files: ${files[@]}"
+              
+              # 保留模板文件,删除其他
+              for file in "${files[@]}"; do
+                if [ "$file" != "$TEMPLATE_FILE" ]; then
+                  echo "  ❌ Deleting: $ARB_DIR/$file"
+                  rm -f "$ARB_DIR/$file"
+                else
+                  echo "  ✅ Keeping template: $file"
+                fi
+              done
+            fi
+          done
+        else
+          echo "  No ARB files found"
+        fi
+        
+        # 确保模板文件存在
         if [ ! -f "$ARB_DIR/$TEMPLATE_FILE" ]; then
-          echo "📝 Creating template ARB file: $TEMPLATE_FILE..."
+          echo ""
+          echo "📝 Creating template file: $TEMPLATE_FILE"
           cat > "$ARB_DIR/$TEMPLATE_FILE" << 'EOFENGLISH'
         {
           "@@locale": "en",
@@ -145,13 +160,21 @@ jobs:
         }
         EOFENGLISH
           echo "✅ Created $TEMPLATE_FILE"
-        else
-          echo "✅ Template file $TEMPLATE_FILE already exists"
         fi
         
+        # 最终验证
         echo ""
-        echo "📋 Final ARB files:"
-        ls -la "$ARB_DIR"/*.arb 2>/dev/null || echo "  No ARB files found"
+        echo "✅ Final ARB files:"
+        ls -la "$ARB_DIR"/*.arb 2>/dev/null
+        echo ""
+        echo "🔍 Final locale check:"
+        for arbfile in "$ARB_DIR"/*.arb; do
+          if [ -f "$arbfile" ]; then
+            filename=$(basename "$arbfile")
+            locale=$(grep '"@@locale"' "$arbfile" | sed 's/.*"@@locale"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+            echo "  ✓ $filename -> $locale"
+          fi
+        done
         echo ""
       
     - name: Generate localization files
